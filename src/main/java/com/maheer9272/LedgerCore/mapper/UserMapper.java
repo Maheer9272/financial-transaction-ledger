@@ -1,0 +1,26 @@
+package com.maheer9272.LedgerCore.mapper;
+
+import com.maheer9272.LedgerCore.dto.CreateUserRequestDto;
+import com.maheer9272.LedgerCore.dto.CreateUserResponseDto;
+import com.maheer9272.LedgerCore.entity.User;
+import org.springframework.stereotype.Component;
+
+@Component
+public class UserMapper {
+
+    public User mapToUser(CreateUserRequestDto requestDto) {
+        return new User(
+                requestDto.getName(),
+                requestDto.getEmail(),
+                requestDto.getPassword()
+        );
+    }
+
+    public CreateUserResponseDto mapToResponse(User user) {
+        return new CreateUserResponseDto(
+                user.getName(),
+                user.getEmail(),
+                "User created successfully"
+        );
+    }
+}

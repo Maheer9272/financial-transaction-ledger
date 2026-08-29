@@ -36,6 +36,14 @@ public class User {
     )
     private String email;
 
+    @NotBlank
+    @Size(min = 8, max = 100)
+    @Column(
+            nullable = false,
+            length = 25
+    )
+    private String password;
+
     @Column(
             nullable = false,
             updatable = false
@@ -55,9 +63,10 @@ public class User {
     protected User() {
     }
 
-    public User(String name, String email) {
+    public User(String name, String email, String password) {
         this.name = name;
         this.email = email;
+        this.password=password;
         this.userStatus = UserStatus.ACTIVE;
 
         Instant now = Instant.now();
