@@ -1,0 +1,18 @@
+package com.maheer9272.LedgerCore.mapper;
+
+import com.maheer9272.LedgerCore.dto.AccountResponseDto;
+import com.maheer9272.LedgerCore.entity.Account;
+import org.springframework.stereotype.Component;
+
+@Component
+public class AccountMapper {
+
+    public AccountResponseDto mapToResponse(Account account) {
+
+        return new AccountResponseDto(
+                account.getAccountNumber(),
+                account.getBalance()
+        );
+
+    }
+}

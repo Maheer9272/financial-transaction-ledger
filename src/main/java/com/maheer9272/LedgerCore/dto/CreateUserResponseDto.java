@@ -1,6 +1,9 @@
 package com.maheer9272.LedgerCore.dto;
 
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Getter
 @Setter
@@ -10,4 +13,5 @@ public class CreateUserResponseDto {
     private String name;
     private String email;
     private String message;
+    private AccountResponseDto accountResponseDto;
 }
