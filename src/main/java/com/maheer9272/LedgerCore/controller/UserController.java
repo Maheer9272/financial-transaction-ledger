@@ -1,36 +1,46 @@
 package com.maheer9272.LedgerCore.controller;
 
 import com.maheer9272.LedgerCore.dto.*;
-import com.maheer9272.LedgerCore.repository.AccountRepository;
 import com.maheer9272.LedgerCore.service.AccountService;
+import com.maheer9272.LedgerCore.service.JwtService;
 import com.maheer9272.LedgerCore.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @RestController
-    @RequestMapping("/api/v1/users")
+@RequestMapping("/api/v1/users")
 public class UserController {
 
     private final UserService userService;
-    private final AccountService accountService;
 
-    public UserController(UserService userService, AccountService accountService, AccountRepository accountRepository) {
+    public UserController(UserService userService) {
         this.userService = userService;
-        this.accountService = accountService;
     }
 
-    @PostMapping
-    public ResponseEntity<CreateUserResponseDto> createUser(
+    @PostMapping("/register")
+    public ResponseEntity<CreateUserResponseDto> registerUser(
             @Valid @RequestBody CreateUserRequestDto requestDto){
 
-        CreateUserResponseDto responseDto = userService.createUser(requestDto);
+        CreateUserResponseDto responseDto = userService.register(requestDto);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
+                .body(responseDto);
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponseDto> login(
+            @Valid @RequestBody LoginRequestDto loginRequestDto) {
+
+        LoginResponseDto responseDto=userService.login(loginRequestDto);
+
+        return ResponseEntity
+                .status(HttpStatus.OK)
                 .body(responseDto);
     }
 
