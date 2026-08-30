@@ -37,10 +37,9 @@ public class User {
     private String email;
 
     @NotBlank
-    @Size(min = 8, max = 100)
     @Column(
             nullable = false,
-            length = 25
+            length = 100
     )
     private String password;
 

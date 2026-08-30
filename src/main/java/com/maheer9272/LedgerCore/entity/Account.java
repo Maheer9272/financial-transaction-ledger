@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Getter;
+import org.hibernate.annotations.Generated;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -18,6 +19,7 @@ public class Account {
     @GeneratedValue
     private UUID id;
 
+    @Generated
     @Column(
             nullable = false,
             unique = true,
@@ -41,7 +43,6 @@ public class Account {
     private AccountStatus accountStatus;
 
     @Version
-    @NotNull
     @Column(nullable = false)
     private Long version;
 
