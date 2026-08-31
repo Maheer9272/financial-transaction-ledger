@@ -1,16 +1,16 @@
 package com.maheer9272.LedgerCore.service;
 
-import com.maheer9272.LedgerCore.dto.*;
+import com.maheer9272.LedgerCore.dto.UserProfileResponse;
+import com.maheer9272.LedgerCore.dto.UserUpdateRequestDto;
+import com.maheer9272.LedgerCore.dto.UserUpdateResponseDto;
 import com.maheer9272.LedgerCore.entity.Account;
 import com.maheer9272.LedgerCore.entity.User;
 import com.maheer9272.LedgerCore.mapper.UserMapper;
 import com.maheer9272.LedgerCore.repository.AccountRepository;
 import com.maheer9272.LedgerCore.repository.UserRepository;
 import jakarta.transaction.Transactional;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -18,67 +18,77 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserMapper userMapper;
-    private final AccountService accountService;
     private final AccountRepository accountRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final AuthenticationManager authenticationManager;
-    private final JwtService jwtService;
+
 
     public UserService(UserRepository userRepository,
                        UserMapper userMapper,
-                       AccountService accountService,
-                       AccountRepository accountRepository,
-                       PasswordEncoder passwordEncoder,
-                       AuthenticationManager authenticationManager,
-                       JwtService jwtService) {
+                       AccountRepository accountRepository) {
         this.userRepository = userRepository;
         this.userMapper = userMapper;
-        this.accountService = accountService;
         this.accountRepository = accountRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.authenticationManager = authenticationManager;
-        this.jwtService = jwtService;
-    }
-
-    /*
-    * This method create the user and a one default bank account
-    * */
-    @Transactional
-    public CreateUserResponseDto register(CreateUserRequestDto requestDto){
-        //Encode the password before creating an User object with raw password
-        String encodedPassword = passwordEncoder.encode(requestDto.getPassword());
-
-        //Using the constructor instead of any setter because ofc public setters that too of entity that's a security flaw
-        User user = new User(
-                requestDto.getName(),
-                requestDto.getEmail(),
-                encodedPassword
-        );
-
-        userRepository.save(user);
-        Account account = accountService.createDefaultAccount(user);
-
-        return userMapper.mapToResponse(user,account);
-    }
-
-    public LoginResponseDto login(LoginRequestDto loginRequestDto){
-        Authentication authenticationRequest =
-                UsernamePasswordAuthenticationToken.unauthenticated(
-                        loginRequestDto.getEmail(),
-                        loginRequestDto.getPassword()
-                );
-
-        Authentication authentication = authenticationManager.authenticate(authenticationRequest);
-
-        String token = jwtService.generateToken(authentication);
-
-        return new LoginResponseDto(token);
     }
 
     @Transactional
-    public UserProfileResponse getProfile(String accountNumber){
-        Account account = accountRepository.getAccountByAccountNumber(accountNumber);
+    public UserProfileResponse getProfile(String accountNumber, Authentication authentication) {
+
+        String email = authentication.getName();
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() ->
+                        new UsernameNotFoundException("User not found"));
+
+        Account account = accountRepository
+                .getAccountByAccountNumber(accountNumber);
+
+        if (!account.getUser().getId().equals(user.getId())) {
+            throw new IllegalArgumentException(
+                    "Account does not belong to the authenticated user"
+            );
+        }
+
         return userMapper.mapProfileToResponse(account);
+    }
+
+    @Transactional
+    public UserUpdateResponseDto updateUser(UserUpdateRequestDto userUpdateRequestDto,
+                                            Authentication authentication) {
+
+        //The either JSON fields should exists or just throw an exception
+        if (userUpdateRequestDto.getName() == null && userUpdateRequestDto.getEmail() == null) {
+            throw new IllegalArgumentException(
+                    "Both fields shouldn't be empty"
+            );
+        }
+
+        //Extract Email from the authentication object
+        String currentEmail = authentication.getName();
+
+        //Get the user by email
+        User user = userRepository.findByEmail(currentEmail)
+                .orElseThrow(() ->
+                        new UsernameNotFoundException("User not found"));
+
+        //Check if the user has the same email as he sent in the request body
+        if (userUpdateRequestDto.getEmail() != null &&
+                userRepository.existsByEmailAndIdNot(
+                        userUpdateRequestDto.getEmail(),
+                        user.getId())) {
+            throw new IllegalArgumentException("Email already exists");
+        }
+
+        if (userUpdateRequestDto.getName() != null) {
+            user.setName(userUpdateRequestDto.getName());
+        }
+
+        if (userUpdateRequestDto.getEmail() != null) {
+            user.setEmail(userUpdateRequestDto.getEmail());
+        }
+
+        return new UserUpdateResponseDto(
+                user.getName(),
+                user.getEmail()
+        );
     }
 
 }
