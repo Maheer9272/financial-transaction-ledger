@@ -39,13 +39,11 @@ public class UserService {
                         new UsernameNotFoundException("User not found"));
 
         Account account = accountRepository
-                .getAccountByAccountNumber(accountNumber);
-
-        if (!account.getUser().getId().equals(user.getId())) {
-            throw new IllegalArgumentException(
-                    "Account does not belong to the authenticated user"
-            );
-        }
+                .findByAccountNumberAndUserId(
+                        accountNumber,
+                        user.getId())
+                .orElseThrow(() ->
+                        new IllegalArgumentException("This account doesn't belong to you"));
 
         return userMapper.mapProfileToResponse(account);
     }

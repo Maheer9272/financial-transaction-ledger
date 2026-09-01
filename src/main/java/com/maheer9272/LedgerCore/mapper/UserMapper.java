@@ -8,8 +8,6 @@ import com.maheer9272.LedgerCore.entity.Account;
 import com.maheer9272.LedgerCore.entity.User;
 import org.springframework.stereotype.Component;
 
-import java.awt.color.ProfileDataException;
-
 @Component
 public class UserMapper {
 
