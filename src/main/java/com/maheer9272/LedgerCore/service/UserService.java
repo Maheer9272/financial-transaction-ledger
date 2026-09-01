@@ -19,24 +19,23 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserMapper userMapper;
     private final AccountRepository accountRepository;
+    private final CurrentUserResolver currentUserResolver;
 
 
     public UserService(UserRepository userRepository,
                        UserMapper userMapper,
-                       AccountRepository accountRepository) {
+                       AccountRepository accountRepository,
+                       CurrentUserResolver currentUserResolver) {
         this.userRepository = userRepository;
         this.userMapper = userMapper;
         this.accountRepository = accountRepository;
+        this.currentUserResolver = currentUserResolver;
     }
 
     @Transactional
     public UserProfileResponse getProfile(String accountNumber, Authentication authentication) {
 
-        String email = authentication.getName();
-
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new UsernameNotFoundException("User not found"));
+        User user = currentUserResolver.resolve(authentication);
 
         Account account = accountRepository
                 .findByAccountNumberAndUserId(
@@ -45,7 +44,7 @@ public class UserService {
                 .orElseThrow(() ->
                         new IllegalArgumentException("This account doesn't belong to you"));
 
-        return userMapper.mapProfileToResponse(account);
+        return userMapper.mapProfileToResponse(user,account);
     }
 
     @Transactional
@@ -59,13 +58,7 @@ public class UserService {
             );
         }
 
-        //Extract Email from the authentication object
-        String currentEmail = authentication.getName();
-
-        //Get the user by email
-        User user = userRepository.findByEmail(currentEmail)
-                .orElseThrow(() ->
-                        new UsernameNotFoundException("User not found"));
+        User user = currentUserResolver.resolve(authentication);
 
         //Check if the user has the same email as he sent in the request body
         if (userUpdateRequestDto.getEmail() != null &&
