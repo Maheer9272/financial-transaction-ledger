@@ -9,8 +9,6 @@ import java.util.UUID;
 
 public interface AccountRepository extends JpaRepository<Account, UUID> {
 
-    Account getAccountByAccountNumber(String accountNumber);
-
     //Find accounts by user ID which is present as FK in Accounts table
     List<Account> findByUserId(UUID userId);
 

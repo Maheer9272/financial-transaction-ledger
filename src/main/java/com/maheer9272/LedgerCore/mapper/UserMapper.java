@@ -11,11 +11,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class UserMapper {
 
-    public User mapToUser(CreateUserRequestDto requestDto) {
+    public User mapToUser(CreateUserRequestDto requestDto, String encodedPassword) {
         return new User(
                 requestDto.getName(),
                 requestDto.getEmail(),
-                requestDto.getPassword()
+                encodedPassword
         );
     }
 
@@ -34,10 +34,10 @@ public class UserMapper {
         );
     }
 
-    public UserProfileResponse mapProfileToResponse(Account account){
+    public UserProfileResponse mapProfileToResponse(User user, Account account) {
         return new UserProfileResponse(
-                account.getUser().getName(),
-                account.getUser().getEmail(),
+                user.getName(),
+                user.getEmail(),
                 account.getBalance()
         );
     }

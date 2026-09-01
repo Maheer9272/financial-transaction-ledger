@@ -43,11 +43,7 @@ public class AuthService {
         String encodedPassword = passwordEncoder.encode(requestDto.getPassword());
 
         //Using the constructor instead of any setter because ofc public setters that too of entity that's a security flaw
-        User user = new User(
-                requestDto.getName(),
-                requestDto.getEmail(),
-                encodedPassword
-        );
+        User user = userMapper.mapToUser(requestDto, encodedPassword);
 
         userRepository.save(user);
         Account account = accountService.createDefaultAccount(user);

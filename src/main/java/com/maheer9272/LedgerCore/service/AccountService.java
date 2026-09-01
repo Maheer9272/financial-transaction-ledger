@@ -16,13 +16,15 @@ import java.util.List;
 @Service
 public class AccountService {
     private final AccountRepository accountRepository;
-    private final UserRepository userRepository;
     private final AccountMapper accountMapper;
+    private final CurrentUserResolver currentUserResolver;
 
-    public AccountService(AccountRepository accountRepository, UserRepository userRepository, AccountMapper accountMapper) {
+    public AccountService(AccountRepository accountRepository,
+                          AccountMapper accountMapper,
+                          CurrentUserResolver currentUserResolver) {
         this.accountRepository = accountRepository;
-        this.userRepository = userRepository;
         this.accountMapper = accountMapper;
+        this.currentUserResolver = currentUserResolver;
     }
 
     /*
@@ -41,13 +43,10 @@ public class AccountService {
     }
 
     @Transactional
-    public AccountResponseDto getAccountByAccountNumber(String accountNumber, Authentication authentication) {
-        String email = authentication.getName();
+    public AccountResponseDto getAccountByAccountNumber(String accountNumber,
+                                                        Authentication authentication) {
 
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new UsernameNotFoundException("Email does not exist"));
-
+        User user = currentUserResolver.resolve(authentication);
         Account account = accountRepository
                 .findByAccountNumberAndUserId(
                         accountNumber,
@@ -60,18 +59,20 @@ public class AccountService {
 
 
     @Transactional
-    public List<AccountResponseDto> getAllAccountsByEmail(
-            Authentication authentication) {
+    public List<AccountResponseDto> getAllAccountsByEmail(Authentication authentication) {
 
-        //Email of the user
-        String email = authentication.getName();
-
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new UsernameNotFoundException("Email does not exist"));
+        User user = currentUserResolver.resolve(authentication);
 
         List<Account> accountList = accountRepository.findByUserId(user.getId());
 
         return accountMapper.mapAccountsToDto(accountList);
+    }
+
+    @Transactional
+    public AccountResponseDto createAdditionalAccount(Authentication authentication) {
+        User user = currentUserResolver.resolve(authentication);
+        Account newAccount = new Account(user);
+        accountRepository.saveAndFlush(newAccount);
+        return accountMapper.mapToResponse(newAccount);
     }
 }
