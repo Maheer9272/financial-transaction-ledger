@@ -41,13 +41,4 @@ public class UserController {
                 .status(HttpStatus.OK)
                 .body(responseDto);
     }
-
-//    @GetMapping("/me/accounts")
-//    public ResponseEntity<List<UserProfileResponse>> profile(@PathVariable String accountNumber){
-//        UserProfileResponse response = userService.getProfile(accountNumber);
-//        return ResponseEntity
-//                .status(HttpStatus.OK)
-//                .body(response);
-//    }
-
 }
