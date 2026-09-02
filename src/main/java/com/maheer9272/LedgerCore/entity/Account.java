@@ -79,8 +79,21 @@ public class Account {
     }
 
     // System account
-    public static Account createSystemAccount() {
-        return new Account(AccountType.SYSTEM);
+    public static Account createSystemAccount(BigDecimal initialBalance) {
+        return new Account(AccountType.SYSTEM, initialBalance);
+    }
+    //Private constructor for creating system account
+    private Account(
+            AccountType accountType,
+            BigDecimal initialBalance
+    ) {
+        this.accountType = accountType;
+        this.balance = initialBalance;
+        this.accountStatus = AccountStatus.ACTIVE;
+
+        Instant now = Instant.now();
+        this.createdAt = now;
+        this.updatedAt = now;
     }
 
     private Account(AccountType accountType) {
@@ -132,4 +145,36 @@ public class Account {
         this.accountStatus = AccountStatus.CLOSED;
         this.updatedAt = Instant.now();
     }
+
+    //Debit and Credit methods
+    public void debit(BigDecimal amount) {
+
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException(
+                    "Debit amount must be positive"
+            );
+        }
+
+        if (this.balance.compareTo(amount) < 0) {
+            throw new IllegalStateException(
+                    "Insufficient balance"
+            );
+        }
+
+        this.balance = this.balance.subtract(amount);
+        this.updatedAt = Instant.now();
+    }
+
+    public void credit(BigDecimal amount) {
+
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException(
+                    "Credit amount must be positive"
+            );
+        }
+
+        this.balance = this.balance.add(amount);
+        this.updatedAt = Instant.now();
+    }
+
 }

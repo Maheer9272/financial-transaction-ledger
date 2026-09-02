@@ -1,6 +1,7 @@
 package com.maheer9272.LedgerCore.repository;
 
 import com.maheer9272.LedgerCore.entity.Account;
+import com.maheer9272.LedgerCore.entity.AccountType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -15,4 +16,7 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
     Optional<Account> findByAccountNumberAndUserId(
             String accountNumber, UUID userId);
 
+    Optional<Account> findByAccountType(AccountType accountType);
+
+    Optional<Account> findByAccountNumber(String accountNumber);
 }

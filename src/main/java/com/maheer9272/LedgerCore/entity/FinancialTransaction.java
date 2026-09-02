@@ -52,7 +52,6 @@ public class FinancialTransaction {
     )
     private Instant createdAt;
 
-    @Column(updatable = false)
     private Instant completedAt;
 
     protected FinancialTransaction() {
@@ -69,4 +68,16 @@ public class FinancialTransaction {
         this.description = description;
         this.createdAt = Instant.now();
     }
+
+    public void complete() {
+        if (this.transactionStatus != TransactionStatus.PENDING) {
+            throw new IllegalStateException(
+                    "Transaction cannot be completed"
+            );
+        }
+
+        this.transactionStatus = TransactionStatus.COMPLETED;
+        this.completedAt = Instant.now();
+    }
+
 }
