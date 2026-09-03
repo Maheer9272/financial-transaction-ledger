@@ -1,5 +1,6 @@
 package com.maheer9272.LedgerCore.entity;
 
+import com.maheer9272.LedgerCore.exception.InvalidTransactionStateException;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -71,7 +72,7 @@ public class FinancialTransaction {
 
     public void complete() {
         if (this.transactionStatus != TransactionStatus.PENDING) {
-            throw new IllegalStateException(
+            throw new InvalidTransactionStateException(
                     "Transaction cannot be completed"
             );
         }

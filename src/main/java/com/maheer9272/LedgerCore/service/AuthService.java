@@ -6,6 +6,7 @@ import com.maheer9272.LedgerCore.dto.LoginRequestDto;
 import com.maheer9272.LedgerCore.dto.LoginResponseDto;
 import com.maheer9272.LedgerCore.entity.Account;
 import com.maheer9272.LedgerCore.entity.User;
+import com.maheer9272.LedgerCore.exception.DuplicateResourceException;
 import com.maheer9272.LedgerCore.mapper.UserMapper;
 import com.maheer9272.LedgerCore.repository.UserRepository;
 import jakarta.transaction.Transactional;
@@ -39,18 +40,22 @@ public class AuthService {
      * */
     @Transactional
     public CreateUserResponseDto register(CreateUserRequestDto requestDto) {
+        if (userRepository.existsByEmail(requestDto.getEmail())) {
+            throw new DuplicateResourceException("This email already exists");
+        }
+
         //Encode the password before creating a User object with raw password
         String encodedPassword = passwordEncoder.encode(requestDto.getPassword());
 
         //Using the constructor instead of any setter because ofc public setters that too of entity that's a security flaw
         User user = userMapper.mapToUser(requestDto, encodedPassword);
-
         userRepository.save(user);
         Account account = accountService.createDefaultAccount(user);
 
         return userMapper.mapToResponse(user, account);
     }
 
+    @Transactional
     public LoginResponseDto login(LoginRequestDto loginRequestDto) {
         Authentication authenticationRequest =
                 UsernamePasswordAuthenticationToken.unauthenticated(
