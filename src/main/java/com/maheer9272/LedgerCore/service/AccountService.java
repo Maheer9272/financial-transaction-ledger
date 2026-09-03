@@ -3,6 +3,8 @@ package com.maheer9272.LedgerCore.service;
 import com.maheer9272.LedgerCore.dto.AccountResponseDto;
 import com.maheer9272.LedgerCore.entity.Account;
 import com.maheer9272.LedgerCore.entity.User;
+import com.maheer9272.LedgerCore.exception.ResourceDeniedException;
+import com.maheer9272.LedgerCore.exception.ResourceNotFoundException;
 import com.maheer9272.LedgerCore.mapper.AccountMapper;
 import com.maheer9272.LedgerCore.repository.AccountRepository;
 import com.maheer9272.LedgerCore.repository.UserRepository;
@@ -52,7 +54,7 @@ public class AccountService {
                         accountNumber,
                         user.getId())
                 .orElseThrow(() ->
-                        new IllegalArgumentException("This account doesn't belong to you"));
+                        new ResourceDeniedException("This account doesn't belong to you"));
 
         return accountMapper.mapToResponse(account);
     }
@@ -62,9 +64,7 @@ public class AccountService {
     public List<AccountResponseDto> getAllAccountsByEmail(Authentication authentication) {
 
         User user = currentUserResolver.resolve(authentication);
-
         List<Account> accountList = accountRepository.findByUserId(user.getId());
-
         return accountMapper.mapAccountsToDto(accountList);
     }
 

@@ -1,5 +1,6 @@
 package com.maheer9272.LedgerCore.entity;
 
+import com.maheer9272.LedgerCore.exception.InsufficientBalanceException;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -156,7 +157,7 @@ public class Account {
         }
 
         if (this.balance.compareTo(amount) < 0) {
-            throw new IllegalStateException(
+            throw new InsufficientBalanceException(
                     "Insufficient balance"
             );
         }

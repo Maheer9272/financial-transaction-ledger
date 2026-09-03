@@ -2,6 +2,7 @@ package com.maheer9272.LedgerCore.service;
 
 import com.maheer9272.LedgerCore.dto.*;
 import com.maheer9272.LedgerCore.entity.*;
+import com.maheer9272.LedgerCore.exception.*;
 import com.maheer9272.LedgerCore.repository.AccountRepository;
 import com.maheer9272.LedgerCore.repository.FinancialTransactionRepository;
 import com.maheer9272.LedgerCore.repository.LedgerEntryRepository;
@@ -30,7 +31,7 @@ public class TransactionService {
 
         User sourceUser = currentUserResolver.resolve(authentication);
         if (sourceUser.getUserStatus()!=UserStatus.ACTIVE){
-            throw new IllegalStateException(
+            throw new UserNotActiveException(
                     "User is not active"
             );
         }
@@ -40,10 +41,10 @@ public class TransactionService {
                         requestDto.getAccountNumber(),
                         sourceUser.getId())
                 .orElseThrow(() ->
-                        new IllegalArgumentException("This userAccount doesn't belong to you")
+                        new ResourceDeniedException("This userAccount doesn't belong to you")
                 );
         if (sourceUserAccount.getAccountStatus() != AccountStatus.ACTIVE) {
-            throw new IllegalStateException(
+            throw new AccountNotActiveException(
                     "Account is not active"
             );
         }
@@ -56,7 +57,7 @@ public class TransactionService {
                 accountRepository
                         .findByAccountType(AccountType.SYSTEM)
                         .orElseThrow(() ->
-                                new IllegalStateException(
+                                new SystemAccountNotFoundException(
                                         "SYSTEM account not found"
                                 ));
 
@@ -101,7 +102,7 @@ public class TransactionService {
                 );
 
         if (debitTotal.compareTo(creditTotal) != 0) {
-            throw new IllegalStateException(
+            throw new TransactionNotBalancedException(
                     "Transaction ledger is not balanced"
             );
         }
@@ -126,7 +127,7 @@ public class TransactionService {
 
         User user = currentUserResolver.resolve(authentication);
         if (user.getUserStatus()!=UserStatus.ACTIVE){
-            throw new IllegalStateException(
+            throw new UserNotActiveException(
                     "User is not active"
             );
         }
@@ -135,10 +136,10 @@ public class TransactionService {
                         requestDto.getAccountNumber(),
                         user.getId())
                 .orElseThrow(() ->
-                        new IllegalArgumentException("This userAccount doesn't belong to you")
+                        new ResourceDeniedException("This userAccount doesn't belong to you")
                 );
         if (userAccount.getAccountStatus() != AccountStatus.ACTIVE) {
-            throw new IllegalStateException(
+            throw new AccountNotActiveException(
                     "Account is not active"
             );
         }
@@ -149,7 +150,7 @@ public class TransactionService {
                 accountRepository
                         .findByAccountType(AccountType.SYSTEM)
                         .orElseThrow(() ->
-                                new IllegalStateException(
+                                new SystemAccountNotFoundException(
                                         "SYSTEM account not found"
                                 ));
 
@@ -196,7 +197,7 @@ public class TransactionService {
                 );
 
         if (debitTotal.compareTo(creditTotal) != 0) {
-            throw new IllegalStateException(
+            throw new TransactionNotBalancedException(
                     "Transaction ledger is not balanced"
             );
         }
@@ -221,7 +222,7 @@ public class TransactionService {
 
         User sourceUser = currentUserResolver.resolve(authentication);
         if (sourceUser.getUserStatus()!=UserStatus.ACTIVE){
-            throw new IllegalStateException(
+            throw new UserNotActiveException(
                     "User is not active"
             );
         }
@@ -231,16 +232,16 @@ public class TransactionService {
                         requestDto.getFromAccountNumber(),
                         sourceUser.getId())
                 .orElseThrow(() ->
-                        new IllegalArgumentException("This account doesn't belong to you")
+                        new ResourceDeniedException("This account doesn't belong to you")
                 );
 
         if (sourceAccount.getAccountType() != AccountType.CUSTOMER) {
             throw new IllegalArgumentException(
-                    "Transfers can only be made to customer accounts"
+                    "Transfers can only be made from customer accounts"
             );
         }
         if (sourceAccount.getAccountStatus() != AccountStatus.ACTIVE) {
-            throw new IllegalStateException(
+            throw new AccountNotActiveException(
                     "Account is not active"
             );
         }
@@ -254,7 +255,7 @@ public class TransactionService {
         Account destinationAccount = accountRepository
                 .findByAccountNumber(requestDto.getToAccountNumber())
                 .orElseThrow(() ->
-                        new IllegalArgumentException("This account does not exist")
+                        new ResourceDeniedException("This account does not exist")
                 );
 
         if (destinationAccount.getAccountType() != AccountType.CUSTOMER) {
@@ -264,7 +265,7 @@ public class TransactionService {
         }
 
         if (destinationAccount.getAccountStatus() != AccountStatus.ACTIVE) {
-            throw new IllegalStateException(
+            throw new AccountNotActiveException(
                     "Account is not active"
             );
         }
@@ -314,7 +315,7 @@ public class TransactionService {
                 );
 
         if (debitTotal.compareTo(creditTotal) != 0) {
-            throw new IllegalStateException(
+            throw new TransactionNotBalancedException(
                     "Transaction ledger is not balanced"
             );
         }

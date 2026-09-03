@@ -5,12 +5,13 @@ import com.maheer9272.LedgerCore.dto.UserUpdateRequestDto;
 import com.maheer9272.LedgerCore.dto.UserUpdateResponseDto;
 import com.maheer9272.LedgerCore.entity.Account;
 import com.maheer9272.LedgerCore.entity.User;
+import com.maheer9272.LedgerCore.exception.DuplicateResourceException;
+import com.maheer9272.LedgerCore.exception.ResourceDeniedException;
 import com.maheer9272.LedgerCore.mapper.UserMapper;
 import com.maheer9272.LedgerCore.repository.AccountRepository;
 import com.maheer9272.LedgerCore.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -42,7 +43,7 @@ public class UserService {
                         accountNumber,
                         user.getId())
                 .orElseThrow(() ->
-                        new IllegalArgumentException("This account doesn't belong to you"));
+                        new ResourceDeniedException("This account doesn't belong to you"));
 
         return userMapper.mapProfileToResponse(user,account);
     }
@@ -65,7 +66,7 @@ public class UserService {
                 userRepository.existsByEmailAndIdNot(
                         userUpdateRequestDto.getEmail(),
                         user.getId())) {
-            throw new IllegalArgumentException("Email already exists");
+            throw new DuplicateResourceException("Email already exists");
         }
 
         if (userUpdateRequestDto.getName() != null) {
