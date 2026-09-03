@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.Getter;
+import org.hibernate.annotations.Generated;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -19,6 +20,7 @@ public class FinancialTransaction {
     @GeneratedValue
     private UUID id;
 
+    @Generated
     @Column(
             unique = true,
             nullable = false,

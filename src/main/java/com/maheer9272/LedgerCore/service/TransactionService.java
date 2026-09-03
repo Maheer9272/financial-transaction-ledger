@@ -30,36 +30,33 @@ public class TransactionService {
     public TransactionResponseDto deposit(DepositRequestDto requestDto, Authentication authentication) {
 
         User sourceUser = currentUserResolver.resolve(authentication);
-        if (sourceUser.getUserStatus()!=UserStatus.ACTIVE){
+        if (sourceUser.getUserStatus() != UserStatus.ACTIVE) {
             throw new UserNotActiveException(
                     "User is not active"
             );
         }
 
-        Account sourceUserAccount = accountRepository
-                .findByAccountNumberAndUserId(
+        Account systemAccount = accountRepository
+                        .findByAccountTypeForUpdate(AccountType.SYSTEM)
+                        .orElseThrow(() ->
+                                new SystemAccountNotFoundException(
+                                        "SYSTEM account not found"
+                                ));
+
+        Account userAccount = accountRepository
+                .findByAccountNumberAndUserIdForUpdate(
                         requestDto.getAccountNumber(),
                         sourceUser.getId())
                 .orElseThrow(() ->
                         new ResourceDeniedException("This userAccount doesn't belong to you")
                 );
-        if (sourceUserAccount.getAccountStatus() != AccountStatus.ACTIVE) {
+        if (userAccount.getAccountStatus() != AccountStatus.ACTIVE) {
             throw new AccountNotActiveException(
                     "Account is not active"
             );
         }
-        /*Till here User is sourceUser is authenticated and account ownership is checked
-        along with account status
-        */
-        BigDecimal depositAmount = requestDto.getAmount();
 
-        Account systemAccount =
-                accountRepository
-                        .findByAccountType(AccountType.SYSTEM)
-                        .orElseThrow(() ->
-                                new SystemAccountNotFoundException(
-                                        "SYSTEM account not found"
-                                ));
+        BigDecimal depositAmount = requestDto.getAmount();
 
         //Creating a financial transaction
         String description = requestDto.getDescription();
@@ -70,7 +67,6 @@ public class TransactionService {
                         description
                 );
         transactionRepository.save(depositTransaction);
-
         // Creating ledger entries
         LedgerEntry debitLedgerEntry = new LedgerEntry(
                 depositTransaction,
@@ -81,7 +77,7 @@ public class TransactionService {
 
         LedgerEntry creditLedgerEntry = new LedgerEntry(
                 depositTransaction,
-                sourceUserAccount,
+                userAccount,
                 LedgerEntryType.CREDIT,
                 depositAmount
         );
@@ -109,7 +105,7 @@ public class TransactionService {
 
         // Transferring the actual money
         systemAccount.debit(depositAmount);
-        sourceUserAccount.credit(depositAmount);
+        userAccount.credit(depositAmount);
         depositTransaction.complete();
 
         return new TransactionResponseDto(
@@ -126,13 +122,21 @@ public class TransactionService {
                                            Authentication authentication) {
 
         User user = currentUserResolver.resolve(authentication);
-        if (user.getUserStatus()!=UserStatus.ACTIVE){
+        if (user.getUserStatus() != UserStatus.ACTIVE) {
             throw new UserNotActiveException(
                     "User is not active"
             );
         }
+        Account systemAccount =
+                accountRepository
+                        .findByAccountTypeForUpdate(AccountType.SYSTEM)
+                        .orElseThrow(() ->
+                                new SystemAccountNotFoundException(
+                                        "SYSTEM account not found"
+                                ));
+
         Account userAccount = accountRepository
-                .findByAccountNumberAndUserId(
+                .findByAccountNumberAndUserIdForUpdate(
                         requestDto.getAccountNumber(),
                         user.getId())
                 .orElseThrow(() ->
@@ -146,14 +150,6 @@ public class TransactionService {
 
         BigDecimal withdrawalAmount = requestDto.getAmount();
 
-        Account systemAccount =
-                accountRepository
-                        .findByAccountType(AccountType.SYSTEM)
-                        .orElseThrow(() ->
-                                new SystemAccountNotFoundException(
-                                        "SYSTEM account not found"
-                                ));
-
         //Creating a financial transaction
         String description = requestDto.getDescription();
 
@@ -165,7 +161,6 @@ public class TransactionService {
                 );
 
         transactionRepository.save(withdrawalTransaction);
-
         // Creating ledger entries
         LedgerEntry debitLedgerEntry = new LedgerEntry(
                 withdrawalTransaction,
@@ -212,7 +207,7 @@ public class TransactionService {
                 withdrawalTransaction.getTransactionType(),
                 withdrawalAmount,
                 withdrawalTransaction.getTransactionStatus(),
-                "Withdrawn the amount of" + withdrawalAmount + " successfully"
+                "Withdrawn the amount of " + withdrawalAmount + " successfully"
         );
     }
 
@@ -221,19 +216,64 @@ public class TransactionService {
                                         Authentication authentication) {
 
         User sourceUser = currentUserResolver.resolve(authentication);
-        if (sourceUser.getUserStatus()!=UserStatus.ACTIVE){
+        if (sourceUser.getUserStatus() != UserStatus.ACTIVE) {
             throw new UserNotActiveException(
                     "User is not active"
             );
         }
 
-        Account sourceAccount = accountRepository
-                .findByAccountNumberAndUserId(
-                        requestDto.getFromAccountNumber(),
-                        sourceUser.getId())
-                .orElseThrow(() ->
-                        new ResourceDeniedException("This account doesn't belong to you")
-                );
+        if (requestDto.getFromAccountNumber().equals(requestDto.getToAccountNumber())) {
+            throw new IllegalArgumentException(
+                    "Cannot transfer to the same account"
+            );
+        }
+
+        Account sourceAccount;
+        Account destinationAccount;
+
+        /*
+         Now checking the comparing the account number
+         Lock the account first whichever account number is smaller
+         */
+        if (requestDto.getFromAccountNumber().compareTo(requestDto.getToAccountNumber()) < 0) {
+
+            sourceAccount = accountRepository
+                    .findByAccountNumberAndUserIdForUpdate(
+                            requestDto.getFromAccountNumber(),
+                            sourceUser.getId()
+                    )
+                    .orElseThrow(() ->
+                            new ResourceDeniedException(
+                                    "This account doesn't belong to you"
+                            )
+                    );
+
+            destinationAccount = accountRepository
+                    .findByAccountNumberForUpdate(requestDto.getToAccountNumber())
+                    .orElseThrow(() ->
+                            new ResourceDeniedException(
+                                    "This account does not exist"
+                            ));
+
+        } else {
+
+            destinationAccount = accountRepository
+                    .findByAccountNumberForUpdate(requestDto.getToAccountNumber())
+                    .orElseThrow(() ->
+                            new ResourceDeniedException(
+                                    "This account does not exist"
+                            ));
+
+            sourceAccount = accountRepository
+                    .findByAccountNumberAndUserIdForUpdate(
+                            requestDto.getFromAccountNumber(),
+                            sourceUser.getId()
+                    )
+                    .orElseThrow(() ->
+                            new ResourceDeniedException(
+                                    "This account doesn't belong to you"
+                            ));
+        }
 
         if (sourceAccount.getAccountType() != AccountType.CUSTOMER) {
             throw new IllegalArgumentException(
@@ -245,18 +285,6 @@ public class TransactionService {
                     "Account is not active"
             );
         }
-
-        if (requestDto.getFromAccountNumber().equals(requestDto.getToAccountNumber())) {
-            throw new IllegalArgumentException(
-                    "Cannot transfer to the same account"
-            );
-        }
-
-        Account destinationAccount = accountRepository
-                .findByAccountNumber(requestDto.getToAccountNumber())
-                .orElseThrow(() ->
-                        new ResourceDeniedException("This account does not exist")
-                );
 
         if (destinationAccount.getAccountType() != AccountType.CUSTOMER) {
             throw new IllegalArgumentException(
@@ -272,12 +300,11 @@ public class TransactionService {
 
         BigDecimal transferAmount = requestDto.getAmount();
 
-        String description = requestDto.getDescription();
         FinancialTransaction transferTransaction =
                 new FinancialTransaction(
                         TransactionType.TRANSFER,
                         transferAmount,
-                        description
+                        requestDto.getDescription()
                 );
 
         transactionRepository.save(transferTransaction);
@@ -296,11 +323,9 @@ public class TransactionService {
                 transferAmount
         );
 
-
         ledgerEntryRepository.save(debitLedgerEntry);
         ledgerEntryRepository.save(creditLedgerEntry);
         ledgerEntryRepository.flush();
-
 
         BigDecimal debitTotal =
                 ledgerEntryRepository.sumAmountByTransactionAndEntryType(
@@ -330,21 +355,7 @@ public class TransactionService {
                 transferTransaction.getTransactionType(),
                 transferAmount,
                 transferTransaction.getTransactionStatus(),
-                "Transferred the amount of" + transferAmount + " successfully"
+                "Transferred the amount of " + transferAmount + " successfully"
         );
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
