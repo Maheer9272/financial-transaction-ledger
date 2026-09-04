@@ -5,12 +5,14 @@ import com.maheer9272.LedgerCore.entity.*;
 import com.maheer9272.LedgerCore.exception.*;
 import com.maheer9272.LedgerCore.repository.AccountRepository;
 import com.maheer9272.LedgerCore.repository.FinancialTransactionRepository;
+import com.maheer9272.LedgerCore.repository.IdempotencyRecordRepository;
 import com.maheer9272.LedgerCore.repository.LedgerEntryRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 
 @Service
 public class TransactionService {
@@ -18,21 +20,46 @@ public class TransactionService {
     private final CurrentUserResolver currentUserResolver;
     private final AccountRepository accountRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
+    private final IdempotencyRecordService idempotencyRecordService;
+    private final IdempotencyRecordRepository idempotencyRecordRepository;
 
-    public TransactionService(FinancialTransactionRepository transactionRepository, CurrentUserResolver currentUserResolver, AccountRepository accountRepository, LedgerEntryRepository ledgerEntryRepository) {
+    public TransactionService(FinancialTransactionRepository transactionRepository, CurrentUserResolver currentUserResolver, AccountRepository accountRepository, LedgerEntryRepository ledgerEntryRepository, IdempotencyRecordService idempotencyRecordService, IdempotencyRecordRepository idempotencyRecordRepository) {
         this.transactionRepository = transactionRepository;
         this.currentUserResolver = currentUserResolver;
         this.accountRepository = accountRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
+        this.idempotencyRecordService = idempotencyRecordService;
+        this.idempotencyRecordRepository = idempotencyRecordRepository;
     }
 
     @Transactional
-    public TransactionResponseDto deposit(DepositRequestDto requestDto, Authentication authentication) {
+    public TransactionResponseDto deposit(DepositRequestDto requestDto,
+                                          Authentication authentication,
+                                          String idempotencyKey) {
 
         User sourceUser = currentUserResolver.resolve(authentication);
         if (sourceUser.getUserStatus() != UserStatus.ACTIVE) {
             throw new UserNotActiveException(
                     "User is not active"
+            );
+        }
+        BigDecimal depositAmount = requestDto.getAmount();
+        String requestHash = idempotencyRecordService.getHash(requestDto.getAccountNumber(),depositAmount);
+        Optional<IdempotencyRecord> record =
+                idempotencyRecordRepository.findByIdempotencyKey(idempotencyKey);
+
+        if (record.isPresent()){
+            if (!record.get().getRequestHash().equals(requestHash)){
+                throw new IdempotencyKeyConflictException(
+                        "Idempotency key has already been used with a different request"
+                );
+            }
+            return new TransactionResponseDto(
+                    record.get().getFinancialTransaction().getReferenceId(),
+                    record.get().getFinancialTransaction().getTransactionType(),
+                    record.get().getFinancialTransaction().getAmount(),
+                    record.get().getFinancialTransaction().getTransactionStatus(),
+                    record.get().getFinancialTransaction().getDescription()
             );
         }
 
@@ -56,7 +83,7 @@ public class TransactionService {
             );
         }
 
-        BigDecimal depositAmount = requestDto.getAmount();
+
 
         //Creating a financial transaction
         String description = requestDto.getDescription();
@@ -103,6 +130,13 @@ public class TransactionService {
             );
         }
 
+        IdempotencyRecord idempotencyRecord = new IdempotencyRecord(
+                idempotencyKey,
+                depositTransaction,
+                requestHash
+        );
+        idempotencyRecordRepository.save(idempotencyRecord);
+
         // Transferring the actual money
         systemAccount.debit(depositAmount);
         userAccount.credit(depositAmount);
@@ -119,7 +153,8 @@ public class TransactionService {
 
     @Transactional
     public TransactionResponseDto withdraw(WithdrawalRequestDto requestDto,
-                                           Authentication authentication) {
+                                           Authentication authentication,
+                                           String idempotencyKey) {
 
         User user = currentUserResolver.resolve(authentication);
         if (user.getUserStatus() != UserStatus.ACTIVE) {
@@ -127,6 +162,28 @@ public class TransactionService {
                     "User is not active"
             );
         }
+        BigDecimal withdrawalAmount = requestDto.getAmount();
+        String requestHash = idempotencyRecordService
+                .getHash(requestDto.getAccountNumber(),withdrawalAmount);
+
+        Optional<IdempotencyRecord> record =
+                idempotencyRecordRepository.findByIdempotencyKey(idempotencyKey);
+
+        if (record.isPresent()){
+            if (!record.get().getRequestHash().equals(requestHash)){
+                throw new IdempotencyKeyConflictException(
+                        "Idempotency key has already been used with a different request"
+                );
+            }
+            return new TransactionResponseDto(
+                    record.get().getFinancialTransaction().getReferenceId(),
+                    record.get().getFinancialTransaction().getTransactionType(),
+                    record.get().getFinancialTransaction().getAmount(),
+                    record.get().getFinancialTransaction().getTransactionStatus(),
+                    record.get().getFinancialTransaction().getDescription()
+            );
+        }
+
         Account systemAccount =
                 accountRepository
                         .findByAccountTypeForUpdate(AccountType.SYSTEM)
@@ -148,7 +205,7 @@ public class TransactionService {
             );
         }
 
-        BigDecimal withdrawalAmount = requestDto.getAmount();
+
 
         //Creating a financial transaction
         String description = requestDto.getDescription();
@@ -197,6 +254,13 @@ public class TransactionService {
             );
         }
 
+        IdempotencyRecord idempotencyRecord = new IdempotencyRecord(
+                idempotencyKey,
+                withdrawalTransaction,
+                requestHash
+        );
+        idempotencyRecordRepository.save(idempotencyRecord);
+
         // Transferring the actual money
         userAccount.debit(withdrawalAmount);
         systemAccount.credit(withdrawalAmount);
@@ -213,7 +277,8 @@ public class TransactionService {
 
     @Transactional
     public TransferResponseDto transfer(TransferRequestDto requestDto,
-                                        Authentication authentication) {
+                                        Authentication authentication,
+                                        String idempotencyKey) {
 
         User sourceUser = currentUserResolver.resolve(authentication);
         if (sourceUser.getUserStatus() != UserStatus.ACTIVE) {
@@ -225,6 +290,31 @@ public class TransactionService {
         if (requestDto.getFromAccountNumber().equals(requestDto.getToAccountNumber())) {
             throw new IllegalArgumentException(
                     "Cannot transfer to the same account"
+            );
+        }
+        BigDecimal transferAmount = requestDto.getAmount();
+
+        String requestHash = idempotencyRecordService.
+                getHash(requestDto.getFromAccountNumber(),
+                        requestDto.getToAccountNumber(),
+                        transferAmount
+                );
+
+        Optional<IdempotencyRecord> record =
+                idempotencyRecordRepository.findByIdempotencyKey(idempotencyKey);
+
+        if (record.isPresent()){
+            if (!record.get().getRequestHash().equals(requestHash)){
+                throw new IdempotencyKeyConflictException(
+                        "Idempotency key has already been used with a different request"
+                );
+            }
+            return new TransferResponseDto(
+                    record.get().getFinancialTransaction().getReferenceId(),
+                    record.get().getFinancialTransaction().getTransactionType(),
+                    record.get().getFinancialTransaction().getAmount(),
+                    record.get().getFinancialTransaction().getTransactionStatus(),
+                    record.get().getFinancialTransaction().getDescription()
             );
         }
 
@@ -298,8 +388,6 @@ public class TransactionService {
             );
         }
 
-        BigDecimal transferAmount = requestDto.getAmount();
-
         FinancialTransaction transferTransaction =
                 new FinancialTransaction(
                         TransactionType.TRANSFER,
@@ -344,6 +432,13 @@ public class TransactionService {
                     "Transaction ledger is not balanced"
             );
         }
+
+        IdempotencyRecord idempotencyRecord = new IdempotencyRecord(
+                idempotencyKey,
+                transferTransaction,
+                requestHash
+        );
+        idempotencyRecordRepository.save(idempotencyRecord);
 
         sourceAccount.debit(transferAmount);
         destinationAccount.credit(transferAmount);
