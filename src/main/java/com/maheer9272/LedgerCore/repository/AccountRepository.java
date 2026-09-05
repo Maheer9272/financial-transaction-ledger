@@ -54,4 +54,6 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
             WHERE a.accountNumber = :accountNumber
             """)
     Optional<Account> findByAccountNumberForUpdate(@Param("accountNumber") String accountNumber);
+
+    Optional<Account> findByAccountNumber(String accountNumber);
 }
