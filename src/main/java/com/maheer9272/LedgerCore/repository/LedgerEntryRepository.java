@@ -21,4 +21,15 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, UUID>,
             UUID transactionId,
             LedgerEntryType entryType
     );
+
+    @Query("""
+                SELECT COALESCE(SUM(l.amount), 0)
+                FROM LedgerEntry l
+                WHERE l.account.id = :accountId
+                  AND l.entryType = :entryType
+            """)
+    BigDecimal sumAmountByAccountIdAndEntryType(
+            UUID accountId,
+            LedgerEntryType entryType
+    );
 }
