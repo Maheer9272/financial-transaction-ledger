@@ -3,16 +3,23 @@ package com.maheer9272.LedgerCore.service;
 import com.maheer9272.LedgerCore.dto.*;
 import com.maheer9272.LedgerCore.entity.*;
 import com.maheer9272.LedgerCore.exception.*;
+import com.maheer9272.LedgerCore.mapper.TransactionMapper;
 import com.maheer9272.LedgerCore.repository.AccountRepository;
 import com.maheer9272.LedgerCore.repository.FinancialTransactionRepository;
 import com.maheer9272.LedgerCore.repository.IdempotencyRecordRepository;
 import com.maheer9272.LedgerCore.repository.LedgerEntryRepository;
 import jakarta.transaction.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class TransactionService {
@@ -22,14 +29,18 @@ public class TransactionService {
     private final LedgerEntryRepository ledgerEntryRepository;
     private final IdempotencyRecordService idempotencyRecordService;
     private final IdempotencyRecordRepository idempotencyRecordRepository;
+    private final TransactionMapper transactionMapper;
 
-    public TransactionService(FinancialTransactionRepository transactionRepository, CurrentUserResolver currentUserResolver, AccountRepository accountRepository, LedgerEntryRepository ledgerEntryRepository, IdempotencyRecordService idempotencyRecordService, IdempotencyRecordRepository idempotencyRecordRepository) {
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("createdAt", "amount");
+
+    public TransactionService(FinancialTransactionRepository transactionRepository, CurrentUserResolver currentUserResolver, AccountRepository accountRepository, LedgerEntryRepository ledgerEntryRepository, IdempotencyRecordService idempotencyRecordService, IdempotencyRecordRepository idempotencyRecordRepository, TransactionMapper transactionMapper) {
         this.transactionRepository = transactionRepository;
         this.currentUserResolver = currentUserResolver;
         this.accountRepository = accountRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.idempotencyRecordService = idempotencyRecordService;
         this.idempotencyRecordRepository = idempotencyRecordRepository;
+        this.transactionMapper = transactionMapper;
     }
 
     @Transactional
@@ -44,12 +55,12 @@ public class TransactionService {
             );
         }
         BigDecimal depositAmount = requestDto.getAmount();
-        String requestHash = idempotencyRecordService.getHash(requestDto.getAccountNumber(),depositAmount);
+        String requestHash = idempotencyRecordService.getHash(requestDto.getAccountNumber(), depositAmount);
         Optional<IdempotencyRecord> record =
                 idempotencyRecordRepository.findByIdempotencyKey(idempotencyKey);
 
-        if (record.isPresent()){
-            if (!record.get().getRequestHash().equals(requestHash)){
+        if (record.isPresent()) {
+            if (!record.get().getRequestHash().equals(requestHash)) {
                 throw new IdempotencyKeyConflictException(
                         "Idempotency key has already been used with a different request"
                 );
@@ -64,11 +75,11 @@ public class TransactionService {
         }
 
         Account systemAccount = accountRepository
-                        .findByAccountTypeForUpdate(AccountType.SYSTEM)
-                        .orElseThrow(() ->
-                                new SystemAccountNotFoundException(
-                                        "SYSTEM account not found"
-                                ));
+                .findByAccountTypeForUpdate(AccountType.SYSTEM)
+                .orElseThrow(() ->
+                        new SystemAccountNotFoundException(
+                                "SYSTEM account not found"
+                        ));
 
         Account userAccount = accountRepository
                 .findByAccountNumberAndUserIdForUpdate(
@@ -83,8 +94,6 @@ public class TransactionService {
             );
         }
 
-
-
         //Creating a financial transaction
         String description = requestDto.getDescription();
         FinancialTransaction depositTransaction =
@@ -93,6 +102,7 @@ public class TransactionService {
                         depositAmount,
                         description
                 );
+
         transactionRepository.save(depositTransaction);
         // Creating ledger entries
         LedgerEntry debitLedgerEntry = new LedgerEntry(
@@ -164,13 +174,13 @@ public class TransactionService {
         }
         BigDecimal withdrawalAmount = requestDto.getAmount();
         String requestHash = idempotencyRecordService
-                .getHash(requestDto.getAccountNumber(),withdrawalAmount);
+                .getHash(requestDto.getAccountNumber(), withdrawalAmount);
 
         Optional<IdempotencyRecord> record =
                 idempotencyRecordRepository.findByIdempotencyKey(idempotencyKey);
 
-        if (record.isPresent()){
-            if (!record.get().getRequestHash().equals(requestHash)){
+        if (record.isPresent()) {
+            if (!record.get().getRequestHash().equals(requestHash)) {
                 throw new IdempotencyKeyConflictException(
                         "Idempotency key has already been used with a different request"
                 );
@@ -204,7 +214,6 @@ public class TransactionService {
                     "Account is not active"
             );
         }
-
 
 
         //Creating a financial transaction
@@ -303,8 +312,8 @@ public class TransactionService {
         Optional<IdempotencyRecord> record =
                 idempotencyRecordRepository.findByIdempotencyKey(idempotencyKey);
 
-        if (record.isPresent()){
-            if (!record.get().getRequestHash().equals(requestHash)){
+        if (record.isPresent()) {
+            if (!record.get().getRequestHash().equals(requestHash)) {
                 throw new IdempotencyKeyConflictException(
                         "Idempotency key has already been used with a different request"
                 );
@@ -453,4 +462,70 @@ public class TransactionService {
                 "Transferred the amount of " + transferAmount + " successfully"
         );
     }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public Page<TransactionHistoryResponseDto> getTransactionHistory(
+            Authentication authentication,
+            String accountNumber,
+            TransactionType transactionType,
+            TransactionStatus transactionStatus,
+            Pageable pageable) {
+
+        User user = currentUserResolver.resolve(authentication);
+        if (user.getUserStatus() == UserStatus.CLOSED) {
+            throw new UserNotActiveException(
+                    "This user is deactivated"
+            );
+        }
+
+        Account account = accountRepository
+                .findByAccountNumberAndUserId(
+                        accountNumber,
+                        user.getId())
+                .orElseThrow(() ->
+                        new ResourceDeniedException("This account doesn't belong to you"));
+
+
+        //Check for invalid sorting field
+        for (Sort.Order order : pageable.getSort()) {
+            if (!ALLOWED_SORT_FIELDS.contains(order.getProperty())) {
+                throw new InvalidSortFieldException(
+                        "Unsupported sort field: " + order.getProperty()
+                );
+            }
+        }
+
+        //Default sort direction
+        if (pageable.getSort().isUnsorted()) {
+            pageable = PageRequest.of(
+                    pageable.getPageNumber(),
+                    pageable.getPageSize(),
+                    Sort.by(Sort.Direction.DESC, "financialTransaction.createdAt")
+            );
+        }
+
+        //Filtering blocks
+        Specification<LedgerEntry> specification =
+                TransactionHistorySpecification.hasAccountNumber(accountNumber);
+
+        if (transactionStatus != null) {
+            specification = specification.and(
+                    TransactionHistorySpecification.hasTransactionStatus(transactionStatus)
+            );
+        }
+
+        if (transactionType != null) {
+            specification = specification.and(
+                    TransactionHistorySpecification.hasTransactionType(transactionType)
+            );
+        }
+
+        Page<LedgerEntry> ledgerEntries = ledgerEntryRepository.findAll(
+                specification,
+                pageable
+        );
+
+        return ledgerEntries.map(transactionMapper::mapToTransactionHistoryResponse);
+    }
+
 }
