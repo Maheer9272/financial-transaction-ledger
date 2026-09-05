@@ -9,6 +9,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -18,7 +19,8 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ExceptionResponseDto> handleGenericException(Exception ex, HttpServletRequest request) {
+    public ResponseEntity<ExceptionResponseDto> handleGenericException(
+            Exception ex, HttpServletRequest request) {
 
         ExceptionResponseDto exceptionResponse = new ExceptionResponseDto(
                 LocalDateTime.now(),
@@ -34,7 +36,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<ExceptionResponseDto> handleRuntimeException(RuntimeException ex, HttpServletRequest request) {
+    public ResponseEntity<ExceptionResponseDto> handleRuntimeException(
+            RuntimeException ex, HttpServletRequest request) {
 
         ExceptionResponseDto exceptionResponse = new ExceptionResponseDto(
                 LocalDateTime.now(),
@@ -50,7 +53,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<ExceptionResponseDto> handleIllegalStateException(IllegalStateException ex, HttpServletRequest request) {
+    public ResponseEntity<ExceptionResponseDto> handleIllegalStateException(
+            IllegalStateException ex, HttpServletRequest request) {
 
         ExceptionResponseDto exceptionResponse = new ExceptionResponseDto(
                 LocalDateTime.now(),
@@ -67,7 +71,8 @@ public class GlobalExceptionHandler {
 
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ValidationExceptionResponseDto> handleDMethodArgumentNotValidException(MethodArgumentNotValidException ex, HttpServletRequest request) {
+    public ResponseEntity<ValidationExceptionResponseDto> handleDMethodArgumentNotValidException(
+            MethodArgumentNotValidException ex, HttpServletRequest request) {
 
         Map<String, String> fieldErrors = new HashMap<>();
         ex.getBindingResult().getFieldErrors()
@@ -89,7 +94,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ExceptionResponseDto> handleResourceNotFoundException(ResourceNotFoundException ex, HttpServletRequest request) {
+    public ResponseEntity<ExceptionResponseDto> handleResourceNotFoundException(
+            ResourceNotFoundException ex, HttpServletRequest request) {
 
         ExceptionResponseDto exceptionResponse = new ExceptionResponseDto(
                 LocalDateTime.now(),
@@ -105,7 +111,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(DuplicateResourceException.class)
-    public ResponseEntity<ExceptionResponseDto> handleDuplicateResourceException(DuplicateResourceException ex, HttpServletRequest request) {
+    public ResponseEntity<ExceptionResponseDto> handleDuplicateResourceException(
+            DuplicateResourceException ex, HttpServletRequest request) {
 
         ExceptionResponseDto exceptionResponse = new ExceptionResponseDto(
                 LocalDateTime.now(),
@@ -202,6 +209,40 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
+                .body(exceptionResponse);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ExceptionResponseDto> handleIdempotencyKeyConflictException(
+            MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+
+        ExceptionResponseDto exceptionResponse = new ExceptionResponseDto(
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value(),
+                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(exceptionResponse);
+    }
+
+    @ExceptionHandler(InvalidSortFieldException.class)
+    public ResponseEntity<ExceptionResponseDto> handleIdempotencyKeyConflictException(
+            InvalidSortFieldException ex, HttpServletRequest request) {
+
+        ExceptionResponseDto exceptionResponse = new ExceptionResponseDto(
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value(),
+                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
                 .body(exceptionResponse);
     }
 
