@@ -1,6 +1,7 @@
 package com.maheer9272.LedgerCore.service;
 
 import com.maheer9272.LedgerCore.dto.UserProfileResponse;
+import com.maheer9272.LedgerCore.dto.UserProfileResponseUsingAccountNumber;
 import com.maheer9272.LedgerCore.dto.UserUpdateRequestDto;
 import com.maheer9272.LedgerCore.dto.UserUpdateResponseDto;
 import com.maheer9272.LedgerCore.entity.Account;
@@ -34,7 +35,7 @@ public class UserService {
     }
 
     @Transactional
-    public UserProfileResponse getProfile(String accountNumber, Authentication authentication) {
+    public UserProfileResponseUsingAccountNumber getProfileUsingAccountNumber(String accountNumber, Authentication authentication) {
 
         User user = currentUserResolver.resolve(authentication);
 
@@ -46,6 +47,14 @@ public class UserService {
                         new ResourceDeniedException("This account doesn't belong to you"));
 
         return userMapper.mapProfileToResponse(user,account);
+    }
+
+    public UserProfileResponse getProfile(Authentication authentication) {
+        User user = currentUserResolver.resolve(authentication);
+        return new UserProfileResponse(
+                user.getName(),
+                user.getEmail()
+        );
     }
 
     @Transactional
@@ -82,5 +91,6 @@ public class UserService {
                 user.getEmail()
         );
     }
+
 
 }
