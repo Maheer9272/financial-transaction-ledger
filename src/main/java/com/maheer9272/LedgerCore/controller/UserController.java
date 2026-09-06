@@ -1,6 +1,7 @@
 package com.maheer9272.LedgerCore.controller;
 
 import com.maheer9272.LedgerCore.dto.UserProfileResponse;
+import com.maheer9272.LedgerCore.dto.UserProfileResponseUsingAccountNumber;
 import com.maheer9272.LedgerCore.dto.UserUpdateRequestDto;
 import com.maheer9272.LedgerCore.dto.UserUpdateResponseDto;
 import com.maheer9272.LedgerCore.service.UserService;
@@ -21,10 +22,18 @@ public class UserController {
     }
 
     @GetMapping("/me/{accountNumber}")
-    public ResponseEntity<UserProfileResponse> profile(
+    public ResponseEntity<UserProfileResponseUsingAccountNumber> profileAccountNumber(
             @PathVariable String accountNumber,
             Authentication authentication) {
-        UserProfileResponse response = userService.getProfile(accountNumber, authentication);
+        UserProfileResponseUsingAccountNumber response = userService.getProfileUsingAccountNumber(accountNumber, authentication);
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(response);
+    }
+    @GetMapping("/me")
+    public ResponseEntity<UserProfileResponse> profile(
+            Authentication authentication) {
+        UserProfileResponse response = userService.getProfile(authentication);
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body(response);

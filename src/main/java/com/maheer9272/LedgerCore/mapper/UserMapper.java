@@ -3,7 +3,7 @@ package com.maheer9272.LedgerCore.mapper;
 import com.maheer9272.LedgerCore.dto.AccountResponseDto;
 import com.maheer9272.LedgerCore.dto.CreateUserRequestDto;
 import com.maheer9272.LedgerCore.dto.CreateUserResponseDto;
-import com.maheer9272.LedgerCore.dto.UserProfileResponse;
+import com.maheer9272.LedgerCore.dto.UserProfileResponseUsingAccountNumber;
 import com.maheer9272.LedgerCore.entity.Account;
 import com.maheer9272.LedgerCore.entity.User;
 import org.springframework.stereotype.Component;
@@ -34,8 +34,8 @@ public class UserMapper {
         );
     }
 
-    public UserProfileResponse mapProfileToResponse(User user, Account account) {
-        return new UserProfileResponse(
+    public UserProfileResponseUsingAccountNumber mapProfileToResponse(User user, Account account) {
+        return new UserProfileResponseUsingAccountNumber(
                 user.getName(),
                 user.getEmail(),
                 account.getBalance()

@@ -1,0 +1,706 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Financial Transaction Ledger API",
+    "description": "REST APIs for a fintech backend implementing user onboarding, account management, double-entry ledger transactions (deposit, withdrawal, transfer), transaction history, and balance reconciliation. All money-movement endpoints require an Idempotency-Key header to safely support retries.",
+    "version": "1.0.3",
+    "contact": {
+      "name": "Shaik Maheer",
+      "url": "https://github.com/Maheer9272/financial-transaction-ledger"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://github.com/Maheer9272/financial-transaction-ledger/blob/main/LICENSE"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Local development server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Authentication",
+      "description": "User registration and login. These are the only endpoints that do not require a bearer token."
+    },
+    {
+      "name": "User",
+      "description": "Authenticated user's own profile management."
+    },
+    {
+      "name": "Account",
+      "description": "Bank accounts owned by the authenticated user, including creation and transaction history lookup."
+    },
+    {
+      "name": "Transaction",
+      "description": "Money-movement operations (deposit, withdrawal, transfer) recorded via double-entry ledger accounting."
+    },
+    {
+      "name": "Reconciliation",
+      "description": "Administrative endpoints for verifying that account balances match ledger balances."
+    }
+  ],
+  "paths": {
+    "/api/v1/auth/register": {
+      "post": {
+        "tags": ["Authentication"],
+        "operationId": "registerUser",
+        "summary": "Register a new user",
+        "description": "Creates a new user along with a default account, then returns the created user's details.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateUserRequestDto" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User registered successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreateUserResponseDto" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": ["Authentication"],
+        "operationId": "login",
+        "summary": "Authenticate a user",
+        "description": "Validates credentials and returns a JWT access token to be used as a bearer token on subsequent requests.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequestDto" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authentication successful",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LoginResponseDto" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/users/me": {
+      "get": {
+        "tags": ["User"],
+        "operationId": "profile",
+        "summary": "Get the authenticated user's profile",
+        "description": "Returns the currently authenticated user's basic profile details (not tied to a specific account).",
+        "responses": {
+          "200": {
+            "description": "Profile retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserProfileResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "patch": {
+        "tags": ["User"],
+        "operationId": "updateUser",
+        "summary": "Update the authenticated user's profile",
+        "description": "Partially updates the name and/or email of the currently authenticated user.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UserUpdateRequestDto" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User updated successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserUpdateResponseDto" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/users/me/{accountNumber}": {
+      "get": {
+        "tags": ["User"],
+        "operationId": "profileAccountNumber",
+        "summary": "Get user profile with a specific account's balance",
+        "description": "Returns the authenticated user's profile details along with the balance of the given account number.",
+        "parameters": [
+          { "$ref": "#/components/parameters/AccountNumberPath" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserProfileResponseUsingAccountNumber" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/users/me/accounts": {
+      "get": {
+        "tags": ["Account"],
+        "operationId": "getAllAccounts",
+        "summary": "List all accounts for the authenticated user",
+        "description": "Returns every account owned by the currently authenticated user.",
+        "responses": {
+          "200": {
+            "description": "Accounts retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/AccountResponseDto" }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["Account"],
+        "operationId": "createAccount",
+        "summary": "Create a new account",
+        "description": "Opens a new account for the currently authenticated user.",
+        "responses": {
+          "200": {
+            "description": "Account created successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccountResponseDto" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/users/me/accounts/{accountNumber}": {
+      "get": {
+        "tags": ["Account"],
+        "operationId": "getAccountByAccountNumber",
+        "summary": "Get a single account by account number",
+        "description": "Returns the account details and current balance for the given account number, provided it belongs to the authenticated user.",
+        "parameters": [
+          { "$ref": "#/components/parameters/AccountNumberPath" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccountResponseDto" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/users/me/accounts/{accountNumber}/transactions": {
+      "get": {
+        "tags": ["Account"],
+        "operationId": "getTransactionHistory",
+        "summary": "Get transaction history for an account",
+        "description": "Returns a paginated list of ledger entries for the given account, optionally filtered by transaction type and/or status.",
+        "parameters": [
+          { "$ref": "#/components/parameters/AccountNumberPath" },
+          {
+            "name": "transactionType",
+            "in": "query",
+            "required": false,
+            "description": "Filter by transaction type",
+            "schema": { "$ref": "#/components/schemas/TransactionType" }
+          },
+          {
+            "name": "transactionStatus",
+            "in": "query",
+            "required": false,
+            "description": "Filter by transaction status",
+            "schema": { "$ref": "#/components/schemas/TransactionStatus" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Zero-based page index",
+            "schema": { "type": "integer", "format": "int32", "minimum": 0, "default": 0 }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "description": "Number of records per page",
+            "schema": { "type": "integer", "format": "int32", "minimum": 1, "default": 20 }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "Sorting criteria in the format: property,(asc|desc). Repeat for multiple sort fields.",
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction history retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PageTransactionHistoryResponseDto" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/transactions/deposit": {
+      "post": {
+        "tags": ["Transaction"],
+        "operationId": "deposit",
+        "summary": "Deposit funds into an account",
+        "description": "Credits the given account with the specified amount. Requires a unique Idempotency-Key so retried requests are not double-processed.",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DepositRequestDto" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deposit processed successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransactionResponseDto" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/transactions/withdraw": {
+      "post": {
+        "tags": ["Transaction"],
+        "operationId": "withdraw",
+        "summary": "Withdraw funds from an account",
+        "description": "Debits the given account by the specified amount, subject to available balance. Requires a unique Idempotency-Key so retried requests are not double-processed.",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WithdrawalRequestDto" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Withdrawal processed successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransactionResponseDto" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/api/v1/transactions/transfer": {
+      "post": {
+        "tags": ["Transaction"],
+        "operationId": "transfer",
+        "summary": "Transfer funds between two accounts",
+        "description": "Moves the specified amount from one account to another as a single double-entry ledger operation. Requires a unique Idempotency-Key so retried requests are not double-processed.",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TransferRequestDto" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transfer processed successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransferResponseDto" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/api/v1/admin/reconciliation/accounts/{accountNumber}": {
+      "get": {
+        "tags": ["Reconciliation"],
+        "operationId": "balanceIndifference",
+        "summary": "Reconcile an account's balance against its ledger",
+        "description": "Administrative check that compares the account's stored balance to the sum of its ledger entries and reports any discrepancy.",
+        "parameters": [
+          { "$ref": "#/components/parameters/AccountNumberPath" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reconciliation check completed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ReconciliationResponseDto" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT access token obtained from /api/v1/auth/login, sent as 'Authorization: Bearer <token>'."
+      }
+    },
+    "parameters": {
+      "AccountNumberPath": {
+        "name": "accountNumber",
+        "in": "path",
+        "required": true,
+        "description": "Unique account number",
+        "schema": { "type": "string", "maxLength": 8 }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "description": "Client-generated unique key (e.g. UUID) that makes the request safe to retry without double-processing.",
+        "schema": { "type": "string" }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The request failed validation",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponseDto" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid authentication credentials",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponseDto" }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The authenticated user does not have access to this resource",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponseDto" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "The requested resource could not be found",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponseDto" }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "The request conflicts with the current state of the resource (e.g. duplicate email, reused idempotency key with a different payload)",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponseDto" }
+          }
+        }
+      },
+      "UnprocessableEntity": {
+        "description": "The request is well-formed but cannot be processed (e.g. insufficient balance)",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponseDto" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponseDto": {
+        "type": "object",
+        "properties": {
+          "timestamp": { "type": "string", "format": "date-time" },
+          "status": { "type": "integer", "format": "int32" },
+          "error": { "type": "string" },
+          "message": { "type": "string" },
+          "path": { "type": "string" }
+        }
+      },
+      "TransactionType": {
+        "type": "string",
+        "enum": ["DEPOSIT", "WITHDRAWAL", "TRANSFER"]
+      },
+      "TransactionStatus": {
+        "type": "string",
+        "enum": ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "REVERSED", "REFUNDED"]
+      },
+      "LedgerEntryType": {
+        "type": "string",
+        "enum": ["CREDIT", "DEBIT"]
+      },
+      "AccountResponseDto": {
+        "type": "object",
+        "properties": {
+          "accountNumber": { "type": "string" },
+          "balance": { "type": "number" }
+        }
+      },
+      "WithdrawalRequestDto": {
+        "type": "object",
+        "required": ["accountNumber", "amount"],
+        "properties": {
+          "accountNumber": { "type": "string", "maxLength": 8, "minLength": 0 },
+          "amount": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
+          "description": { "type": "string", "maxLength": 100, "minLength": 0 }
+        }
+      },
+      "DepositRequestDto": {
+        "type": "object",
+        "required": ["accountNumber", "amount"],
+        "properties": {
+          "accountNumber": { "type": "string", "maxLength": 8, "minLength": 0 },
+          "amount": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
+          "description": { "type": "string", "maxLength": 100, "minLength": 0 }
+        }
+      },
+      "TransferRequestDto": {
+        "type": "object",
+        "required": ["amount", "fromAccountNumber", "toAccountNumber"],
+        "properties": {
+          "fromAccountNumber": { "type": "string", "maxLength": 8, "minLength": 0 },
+          "toAccountNumber": { "type": "string", "maxLength": 8, "minLength": 0 },
+          "amount": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
+          "description": { "type": "string", "maxLength": 100, "minLength": 0 }
+        }
+      },
+      "TransactionResponseDto": {
+        "type": "object",
+        "properties": {
+          "referenceId": { "type": "string" },
+          "transactionType": { "$ref": "#/components/schemas/TransactionType" },
+          "amount": { "type": "number" },
+          "status": { "$ref": "#/components/schemas/TransactionStatus" },
+          "message": { "type": "string" }
+        }
+      },
+      "TransferResponseDto": {
+        "type": "object",
+        "properties": {
+          "referenceId": { "type": "string" },
+          "transactionType": { "$ref": "#/components/schemas/TransactionType" },
+          "amount": { "type": "number" },
+          "status": { "$ref": "#/components/schemas/TransactionStatus" },
+          "message": { "type": "string" }
+        }
+      },
+      "CreateUserRequestDto": {
+        "type": "object",
+        "required": ["email", "name", "password"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 50, "minLength": 3 },
+          "email": { "type": "string", "format": "email", "maxLength": 50, "minLength": 0 },
+          "password": { "type": "string", "format": "password", "maxLength": 25, "minLength": 8 }
+        }
+      },
+      "CreateUserResponseDto": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "email": { "type": "string" },
+          "message": { "type": "string" },
+          "accountResponseDto": { "$ref": "#/components/schemas/AccountResponseDto" }
+        }
+      },
+      "LoginRequestDto": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email", "maxLength": 50, "minLength": 0 },
+          "password": { "type": "string", "format": "password", "maxLength": 25, "minLength": 8 }
+        }
+      },
+      "LoginResponseDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": { "type": "string" }
+        }
+      },
+      "UserUpdateRequestDto": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "maxLength": 50, "minLength": 3 },
+          "email": { "type": "string", "format": "email", "maxLength": 50, "minLength": 0 }
+        }
+      },
+      "UserUpdateResponseDto": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "email": { "type": "string" }
+        }
+      },
+      "UserProfileResponse": {
+        "type": "object",
+        "description": "Basic authenticated-user profile, not scoped to any single account.",
+        "properties": {
+          "name": { "type": "string" },
+          "email": { "type": "string" }
+        }
+      },
+      "UserProfileResponseUsingAccountNumber": {
+        "type": "object",
+        "description": "User profile combined with the balance of a specific account.",
+        "properties": {
+          "name": { "type": "string" },
+          "email": { "type": "string" },
+          "balance": { "type": "number" }
+        }
+      },
+      "TransactionHistoryResponseDto": {
+        "type": "object",
+        "properties": {
+          "referenceId": { "type": "string" },
+          "transactionType": { "$ref": "#/components/schemas/TransactionType" },
+          "amount": { "type": "number" },
+          "status": { "$ref": "#/components/schemas/TransactionStatus" },
+          "ledgerEntryType": { "$ref": "#/components/schemas/LedgerEntryType" },
+          "description": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "completedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SortObject": {
+        "type": "object",
+        "properties": {
+          "empty": { "type": "boolean" },
+          "sorted": { "type": "boolean" },
+          "unsorted": { "type": "boolean" }
+        }
+      },
+      "PageableObject": {
+        "type": "object",
+        "properties": {
+          "offset": { "type": "integer", "format": "int64" },
+          "pageNumber": { "type": "integer", "format": "int32" },
+          "pageSize": { "type": "integer", "format": "int32" },
+          "sort": { "$ref": "#/components/schemas/SortObject" },
+          "paged": { "type": "boolean" },
+          "unpaged": { "type": "boolean" }
+        }
+      },
+      "PageTransactionHistoryResponseDto": {
+        "type": "object",
+        "properties": {
+          "totalPages": { "type": "integer", "format": "int32" },
+          "totalElements": { "type": "integer", "format": "int64" },
+          "size": { "type": "integer", "format": "int32" },
+          "content": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/TransactionHistoryResponseDto" }
+          },
+          "number": { "type": "integer", "format": "int32" },
+          "sort": { "$ref": "#/components/schemas/SortObject" },
+          "pageable": { "$ref": "#/components/schemas/PageableObject" },
+          "numberOfElements": { "type": "integer", "format": "int32" },
+          "first": { "type": "boolean" },
+          "last": { "type": "boolean" },
+          "empty": { "type": "boolean" }
+        }
+      },
+      "ReconciliationResponseDto": {
+        "type": "object",
+        "properties": {
+          "accountNumber": { "type": "string" },
+          "accountBalance": { "type": "number" },
+          "ledgerBalance": { "type": "number" },
+          "difference": { "type": "number" },
+          "reconciled": { "type": "boolean" }
+        }
+      }
+    }
+  },
+  "security": [
+    { "bearerAuth": [] }
+  ]
+}
