@@ -583,23 +583,69 @@ public class TransactionServiceTest {
                 ));
     }
 
+    @Test
+    void transferWithInsufficientBalanceRejected(){
+        //Arranges
+        String fromAccountNumber="12345678";
+        String toAccountNumber="87654321";
+
+        User sourceUser = new User(
+                "Source User",
+                "source@example.com",
+                "pass123"
+        );
+        User destinationUser = new User(
+                "destination User",
+                "destination@example.com",
+                "pass123"
+        );
+
+        Account sourceAccount = new Account(sourceUser);
+        Account destinationAccount = new Account(destinationUser);
+
+        sourceAccount.credit(new BigDecimal("5000.00"));
+        destinationAccount.credit(new BigDecimal("5000.00"));
+        BigDecimal transferAmount = new BigDecimal("60000.00");
+
+        when(currentUserResolver.resolve(authentication))
+                .thenReturn(sourceUser);
+        when(idempotencyRecordService.getHash(fromAccountNumber,toAccountNumber,transferAmount))
+                .thenReturn("new-hash");
+        when(idempotencyRecordRepository.findByIdempotencyKey("new-hash"))
+                .thenReturn(Optional.empty());
+        when(accountRepository.findByAccountNumberAndUserIdForUpdate(
+                eq(fromAccountNumber),
+                nullable(UUID.class)))
+                .thenReturn(Optional.of(sourceAccount));
+        when(accountRepository.findByAccountNumberForUpdate(
+                eq(toAccountNumber)))
+                .thenReturn(Optional.of(destinationAccount));
+        when(transactionRepository.save(any(FinancialTransaction.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(ledgerEntryRepository.save(any(LedgerEntry.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(ledgerEntryRepository.sumAmountByTransactionAndEntryType(
+                nullable(UUID.class),
+                eq(LedgerEntryType.DEBIT)
+        )).thenReturn(transferAmount);
+        when(ledgerEntryRepository.sumAmountByTransactionAndEntryType(
+                nullable(UUID.class),
+                eq(LedgerEntryType.CREDIT)
+        )).thenReturn(transferAmount);
+
+        TransferRequestDto requestDto = new TransferRequestDto(
+                fromAccountNumber,
+                toAccountNumber,
+                transferAmount,
+                "Transfer Test"
+        );
+
+        //Act & Assert
+        assertThrows(InsufficientBalanceException.class,
+                ()->transactionService.transfer(
+                        requestDto,
+                        authentication,
+                        "new-hash"
+                ));
+    }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
