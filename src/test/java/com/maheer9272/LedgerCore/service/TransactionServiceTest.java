@@ -5,10 +5,7 @@ import com.maheer9272.LedgerCore.dto.TransactionResponseDto;
 import com.maheer9272.LedgerCore.dto.TransferRequestDto;
 import com.maheer9272.LedgerCore.dto.WithdrawalRequestDto;
 import com.maheer9272.LedgerCore.entity.*;
-import com.maheer9272.LedgerCore.exception.IdempotencyKeyConflictException;
-import com.maheer9272.LedgerCore.exception.InsufficientBalanceException;
-import com.maheer9272.LedgerCore.exception.ResourceDeniedException;
-import com.maheer9272.LedgerCore.exception.UserNotActiveException;
+import com.maheer9272.LedgerCore.exception.*;
 import com.maheer9272.LedgerCore.repository.AccountRepository;
 import com.maheer9272.LedgerCore.repository.FinancialTransactionRepository;
 import com.maheer9272.LedgerCore.repository.IdempotencyRecordRepository;
@@ -575,7 +572,7 @@ public class TransactionServiceTest {
                 transferAmount,
                 "transfer test 3"
         );
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(InvalidTransactionRequestException.class,
                 ()->transactionService.transfer(
                         transferRequestDto,
                         authentication,

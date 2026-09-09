@@ -297,7 +297,7 @@ public class TransactionService {
         }
 
         if (requestDto.getFromAccountNumber().equals(requestDto.getToAccountNumber())) {
-            throw new IllegalArgumentException(
+            throw new InvalidTransactionRequestException(
                     "Cannot transfer to the same account"
             );
         }
@@ -375,7 +375,7 @@ public class TransactionService {
         }
 
         if (sourceAccount.getAccountType() != AccountType.CUSTOMER) {
-            throw new IllegalArgumentException(
+            throw new InvalidTransactionRequestException(
                     "Transfers can only be made from customer accounts"
             );
         }
@@ -386,8 +386,8 @@ public class TransactionService {
         }
 
         if (destinationAccount.getAccountType() != AccountType.CUSTOMER) {
-            throw new IllegalArgumentException(
-                    "Transfers can only be made to customer accounts"
+            throw new InvalidTransactionRequestException(
+                    "Transfers can only be made from customer accounts"
             );
         }
 

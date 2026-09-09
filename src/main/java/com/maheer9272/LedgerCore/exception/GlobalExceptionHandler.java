@@ -392,5 +392,38 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(exceptionResponse);
     }
 
+    @ExceptionHandler(InvalidTransactionRequestException.class)
+    public ResponseEntity<ExceptionResponseDto> handleCantTransferToThisAccountException(
+            HttpServletRequest request) {
+
+        ExceptionResponseDto exceptionResponse = new ExceptionResponseDto(
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value(),
+                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                "Check account number again",
+                request.getRequestURI()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(exceptionResponse);
+    }
+
+    @ExceptionHandler(InvalidAmountException.class)
+    public ResponseEntity<ExceptionResponseDto> handleInvalidAmountException(
+            HttpServletRequest request) {
+
+        ExceptionResponseDto exceptionResponse = new ExceptionResponseDto(
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value(),
+                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                "Amount Must be positive",
+                request.getRequestURI()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(exceptionResponse);
+    }
 
 }
