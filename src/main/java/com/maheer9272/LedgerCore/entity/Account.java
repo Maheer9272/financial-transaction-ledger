@@ -1,6 +1,7 @@
 package com.maheer9272.LedgerCore.entity;
 
 import com.maheer9272.LedgerCore.exception.InsufficientBalanceException;
+import com.maheer9272.LedgerCore.exception.InvalidAmountException;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -151,7 +152,7 @@ public class Account {
     public void debit(BigDecimal amount) {
 
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(
+            throw new InvalidAmountException(
                     "Debit amount must be positive"
             );
         }
@@ -169,7 +170,7 @@ public class Account {
     public void credit(BigDecimal amount) {
 
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(
+            throw new InvalidAmountException(
                     "Credit amount must be positive"
             );
         }
