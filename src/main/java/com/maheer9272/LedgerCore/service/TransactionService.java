@@ -47,7 +47,9 @@ public class TransactionService {
     public TransactionResponseDto deposit(DepositRequestDto requestDto,
                                           Authentication authentication,
                                           String idempotencyKey) {
-
+        if (requestDto.getAmount().signum() <= 0) {
+            throw new InvalidAmountException("Amount must be positive");
+        }
         User sourceUser = currentUserResolver.resolve(authentication);
         if (sourceUser.getUserStatus() != UserStatus.ACTIVE) {
             throw new UserNotActiveException(
@@ -103,7 +105,7 @@ public class TransactionService {
                         description
                 );
 
-        transactionRepository.save(depositTransaction);
+        transactionRepository.saveAndFlush(depositTransaction);
         // Creating ledger entries
         LedgerEntry debitLedgerEntry = new LedgerEntry(
                 depositTransaction,
@@ -120,25 +122,6 @@ public class TransactionService {
         );
         ledgerEntryRepository.save(debitLedgerEntry);
         ledgerEntryRepository.save(creditLedgerEntry);
-        ledgerEntryRepository.flush();
-
-        BigDecimal debitTotal =
-                ledgerEntryRepository.sumAmountByTransactionAndEntryType(
-                        depositTransaction.getId(),
-                        LedgerEntryType.DEBIT
-                );
-
-        BigDecimal creditTotal =
-                ledgerEntryRepository.sumAmountByTransactionAndEntryType(
-                        depositTransaction.getId(),
-                        LedgerEntryType.CREDIT
-                );
-
-        if (debitTotal.compareTo(creditTotal) != 0) {
-            throw new TransactionNotBalancedException(
-                    "Transaction ledger is not balanced"
-            );
-        }
 
         IdempotencyRecord idempotencyRecord = new IdempotencyRecord(
                 idempotencyKey,
@@ -166,6 +149,9 @@ public class TransactionService {
                                            Authentication authentication,
                                            String idempotencyKey) {
 
+        if (requestDto.getAmount().signum() <= 0) {
+            throw new InvalidAmountException("Amount must be positive");
+        }
         User user = currentUserResolver.resolve(authentication);
         if (user.getUserStatus() != UserStatus.ACTIVE) {
             throw new UserNotActiveException(
@@ -215,7 +201,6 @@ public class TransactionService {
             );
         }
 
-
         //Creating a financial transaction
         String description = requestDto.getDescription();
 
@@ -226,7 +211,7 @@ public class TransactionService {
                         description
                 );
 
-        transactionRepository.save(withdrawalTransaction);
+        transactionRepository.saveAndFlush(withdrawalTransaction);
         // Creating ledger entries
         LedgerEntry debitLedgerEntry = new LedgerEntry(
                 withdrawalTransaction,
@@ -243,25 +228,6 @@ public class TransactionService {
         );
         ledgerEntryRepository.save(debitLedgerEntry);
         ledgerEntryRepository.save(creditLedgerEntry);
-        ledgerEntryRepository.flush();
-
-        BigDecimal debitTotal =
-                ledgerEntryRepository.sumAmountByTransactionAndEntryType(
-                        withdrawalTransaction.getId(),
-                        LedgerEntryType.DEBIT
-                );
-
-        BigDecimal creditTotal =
-                ledgerEntryRepository.sumAmountByTransactionAndEntryType(
-                        withdrawalTransaction.getId(),
-                        LedgerEntryType.CREDIT
-                );
-
-        if (debitTotal.compareTo(creditTotal) != 0) {
-            throw new TransactionNotBalancedException(
-                    "Transaction ledger is not balanced"
-            );
-        }
 
         IdempotencyRecord idempotencyRecord = new IdempotencyRecord(
                 idempotencyKey,
@@ -289,6 +255,9 @@ public class TransactionService {
                                         Authentication authentication,
                                         String idempotencyKey) {
 
+        if (requestDto.getAmount().signum() <= 0) {
+            throw new InvalidAmountException("Amount must be positive");
+        }
         User sourceUser = currentUserResolver.resolve(authentication);
         if (sourceUser.getUserStatus() != UserStatus.ACTIVE) {
             throw new UserNotActiveException(
@@ -404,7 +373,7 @@ public class TransactionService {
                         requestDto.getDescription()
                 );
 
-        transactionRepository.save(transferTransaction);
+        transactionRepository.saveAndFlush(transferTransaction);
 
         LedgerEntry debitLedgerEntry = new LedgerEntry(
                 transferTransaction,
@@ -422,25 +391,6 @@ public class TransactionService {
 
         ledgerEntryRepository.save(debitLedgerEntry);
         ledgerEntryRepository.save(creditLedgerEntry);
-        ledgerEntryRepository.flush();
-
-        BigDecimal debitTotal =
-                ledgerEntryRepository.sumAmountByTransactionAndEntryType(
-                        transferTransaction.getId(),
-                        LedgerEntryType.DEBIT
-                );
-
-        BigDecimal creditTotal =
-                ledgerEntryRepository.sumAmountByTransactionAndEntryType(
-                        transferTransaction.getId(),
-                        LedgerEntryType.CREDIT
-                );
-
-        if (debitTotal.compareTo(creditTotal) != 0) {
-            throw new TransactionNotBalancedException(
-                    "Transaction ledger is not balanced"
-            );
-        }
 
         IdempotencyRecord idempotencyRecord = new IdempotencyRecord(
                 idempotencyKey,
