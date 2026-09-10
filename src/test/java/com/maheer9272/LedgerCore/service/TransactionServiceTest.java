@@ -1,9 +1,6 @@
 package com.maheer9272.LedgerCore.service;
 
-import com.maheer9272.LedgerCore.dto.DepositRequestDto;
-import com.maheer9272.LedgerCore.dto.TransactionResponseDto;
-import com.maheer9272.LedgerCore.dto.TransferRequestDto;
-import com.maheer9272.LedgerCore.dto.WithdrawalRequestDto;
+import com.maheer9272.LedgerCore.dto.*;
 import com.maheer9272.LedgerCore.entity.*;
 import com.maheer9272.LedgerCore.exception.*;
 import com.maheer9272.LedgerCore.repository.AccountRepository;
@@ -27,7 +24,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-public class TransactionServiceTest {
+class TransactionServiceTest {
 
     @Mock
     private FinancialTransactionRepository transactionRepository;
@@ -46,19 +43,10 @@ public class TransactionServiceTest {
     @InjectMocks
     private TransactionService transactionService;
 
-    /*
-    Proves the complete happy path covering the validation passes.
-    Transaction is created, two ledger entries are created.
-    Customer balance increases.
-    System balance decreases.
-    Transaction completes.
-    Idempotency record is created.
-    */
     @Test
     void shouldDepositSuccessfully() {
 
         // Arrange
-
         String accountNumber = "12345678";
         BigDecimal depositAmount = new BigDecimal("1000.00");
         User sourceUser = new User(
@@ -66,9 +54,13 @@ public class TransactionServiceTest {
                 "test@example.com",
                 "password"
         );
-        Account account = new Account(sourceUser);
-        Account systemAccount = Account
-                .createSystemAccount(new BigDecimal("100000.00"));
+
+        Account userAccount = new Account(sourceUser);
+
+        Account systemAccount =
+                Account.createSystemAccount(
+                        new BigDecimal("100000.00")
+                );
 
         when(currentUserResolver.resolve(authentication))
                 .thenReturn(sourceUser);
@@ -77,81 +69,87 @@ public class TransactionServiceTest {
                 accountNumber,
                 depositAmount
         )).thenReturn("test-request-hash");
-
-        when(idempotencyRecordRepository.findByIdempotencyKey("Test-123"))
-                .thenReturn(Optional.empty());
-
+        when(idempotencyRecordRepository.findByIdempotencyKey(
+                "Test-123"
+        )).thenReturn(Optional.empty());
+        when(accountRepository.findByAccountTypeForUpdate(
+                AccountType.SYSTEM
+        )).thenReturn(Optional.of(systemAccount));
         when(accountRepository.findByAccountNumberAndUserIdForUpdate(
                 eq(accountNumber),
                 nullable(UUID.class)
-        )).thenReturn(Optional.of(account));
+        )).thenReturn(Optional.of(userAccount));
+        when(transactionRepository.saveAndFlush(
+                any(FinancialTransaction.class)
+        )).thenAnswer(invocation -> invocation.getArgument(0));
+        when(ledgerEntryRepository.save(
+                any(LedgerEntry.class)
+        )).thenAnswer(invocation -> invocation.getArgument(0));
+        DepositRequestDto requestDto =
+                new DepositRequestDto(
+                        accountNumber,
+                        depositAmount,
+                        "Test description"
+                );
 
-        when(accountRepository.findByAccountTypeForUpdate(AccountType.SYSTEM))
-                .thenReturn(Optional.of(systemAccount));
-
-        when(transactionRepository.save(any(FinancialTransaction.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        when(ledgerEntryRepository.save(any(LedgerEntry.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        DepositRequestDto requestDto = new DepositRequestDto(
-                accountNumber,
-                depositAmount,
-                "Test description"
-        );
-
-        transactionService.deposit(
-                requestDto,
-                authentication,
-                "Test-123"
-        );
+        // Act
+        TransactionResponseDto result =
+                transactionService.deposit(
+                        requestDto,
+                        authentication,
+                        "Test-123"
+                );
 
         // Assert
-
         assertEquals(
                 new BigDecimal("1000.00"),
-                account.getBalance()
+                userAccount.getBalance()
         );
-
         assertEquals(
                 new BigDecimal("99000.00"),
                 systemAccount.getBalance()
         );
+        assertEquals(
+                TransactionType.DEPOSIT,
+                result.getTransactionType()
+        );
+        assertEquals(
+                depositAmount,
+                result.getAmount()
+        );
+        assertEquals(
+                TransactionStatus.COMPLETED,
+                result.getStatus()
+        );
 
         verify(transactionRepository)
-                .save(any(FinancialTransaction.class));
-
+                .saveAndFlush(any(FinancialTransaction.class));
         verify(ledgerEntryRepository, times(2))
                 .save(any(LedgerEntry.class));
-
         verify(idempotencyRecordRepository)
                 .save(any(IdempotencyRecord.class));
     }
 
 
-    /*
-    User can't perform operation if user status is inactive.
-    */
     @Test
     void shouldRejectDepositWhenUserIsNotActive() {
 
         // Arrange
-        User sourceUser = new User(
+        User user = new User(
                 "Test User",
                 "test@example.com",
                 "password"
         );
-        sourceUser.suspend();
-
+        user.suspend();
         when(currentUserResolver.resolve(authentication))
-                .thenReturn(sourceUser);
+                .thenReturn(user);
 
-        DepositRequestDto requestDto = new DepositRequestDto(
-                "12345678",
-                new BigDecimal("1000.00"),
-                "Test deposit"
-        );
+        DepositRequestDto requestDto =
+                new DepositRequestDto(
+                        "12345678",
+                        new BigDecimal("1000.00"),
+                        "Test deposit"
+                );
 
         // Act & Assert
         assertThrows(
@@ -162,47 +160,53 @@ public class TransactionServiceTest {
                         "Test-123"
                 )
         );
+
+        verifyNoInteractions(accountRepository);
+        verifyNoInteractions(transactionRepository);
+        verifyNoInteractions(ledgerEntryRepository);
+        verifyNoInteractions(idempotencyRecordRepository);
     }
 
-    /*
-    Can't deposit in another user's account.
-    */
+
     @Test
     void shouldRejectDepositWhenAccountDoesNotBelongToUser() {
         // Arrange
-        User userA = new User(
-                "Test User B",
-                "testA@example.com",
+        String accountNumber = "12345679";
+        BigDecimal depositAmount = new BigDecimal("1000.00");
+        User user = new User(
+                "Test User",
+                "test@example.com",
                 "password"
         );
 
-        String accountNumberOfUserB = "12345679";
         Account systemAccount =
-                Account.createSystemAccount(new BigDecimal("1000.00"));
+                Account.createSystemAccount(
+                        new BigDecimal("100000.00")
+                );
 
         when(currentUserResolver.resolve(authentication))
-                .thenReturn(userA);
+                .thenReturn(user);
         when(idempotencyRecordService.getHash(
-                accountNumberOfUserB,
-                new BigDecimal("1000.00")
+                accountNumber,
+                depositAmount
         )).thenReturn("test-request-hash");
-
-        when(idempotencyRecordRepository.findByIdempotencyKey("Test-123"))
-                .thenReturn(Optional.empty());
-
-        when(accountRepository.findByAccountTypeForUpdate(AccountType.SYSTEM))
-                .thenReturn(Optional.of(systemAccount));
-
+        when(idempotencyRecordRepository.findByIdempotencyKey(
+                "Test-123"
+        )).thenReturn(Optional.empty());
+        when(accountRepository.findByAccountTypeForUpdate(
+                AccountType.SYSTEM
+        )).thenReturn(Optional.of(systemAccount));
         when(accountRepository.findByAccountNumberAndUserIdForUpdate(
-                eq(accountNumberOfUserB),
+                eq(accountNumber),
                 nullable(UUID.class)
         )).thenReturn(Optional.empty());
 
-        DepositRequestDto requestDto = new DepositRequestDto(
-                accountNumberOfUserB,
-                new BigDecimal("1000.00"),
-                "Test deposit"
-        );
+        DepositRequestDto requestDto =
+                new DepositRequestDto(
+                        accountNumber,
+                        depositAmount,
+                        "Test deposit"
+                );
 
         // Act & Assert
         assertThrows(
@@ -213,27 +217,37 @@ public class TransactionServiceTest {
                         "Test-123"
                 )
         );
+
+        verify(transactionRepository, never())
+                .saveAndFlush(any(FinancialTransaction.class));
+        verify(ledgerEntryRepository, never())
+                .save(any(LedgerEntry.class));
+        verify(idempotencyRecordRepository, never())
+                .save(any(IdempotencyRecord.class));
     }
 
 
     @Test
     void duplicateIdempotencyKeyForDeposit() {
-
+        // Arrange
         User user = new User(
                 "Test User",
                 "test@gmail.com",
                 "test12345"
         );
 
-        BigDecimal depositAmount = new BigDecimal("1000.00");
+        BigDecimal depositAmount =
+                new BigDecimal("1000.00");
+
         String accountNumber = "12345678";
         String oldHash = "oldHash";
 
-        DepositRequestDto requestDto = new DepositRequestDto(
-                accountNumber,
-                depositAmount,
-                "Test Description"
-        );
+        DepositRequestDto requestDto =
+                new DepositRequestDto(
+                        accountNumber,
+                        depositAmount,
+                        "Test Description"
+                );
 
         FinancialTransaction depositTransaction =
                 new FinancialTransaction(
@@ -251,15 +265,15 @@ public class TransactionServiceTest {
 
         when(currentUserResolver.resolve(authentication))
                 .thenReturn(user);
-
         when(idempotencyRecordService.getHash(
                 accountNumber,
                 depositAmount
         )).thenReturn("newHash");
+        when(idempotencyRecordRepository.findByIdempotencyKey(
+                "Idem123"
+        )).thenReturn(Optional.of(idempotencyRecord));
 
-        when(idempotencyRecordRepository.findByIdempotencyKey("Idem123"))
-                .thenReturn(Optional.of(idempotencyRecord));
-
+        // Act & Assert
         assertThrows(
                 IdempotencyKeyConflictException.class,
                 () -> transactionService.deposit(
@@ -268,33 +282,43 @@ public class TransactionServiceTest {
                         "Idem123"
                 )
         );
+
+        verify(accountRepository, never())
+                .findByAccountTypeForUpdate(AccountType.SYSTEM);
+        verify(transactionRepository, never())
+                .saveAndFlush(any(FinancialTransaction.class));
+        verify(ledgerEntryRepository, never())
+                .save(any(LedgerEntry.class));
+        verify(idempotencyRecordRepository, never())
+                .save(any(IdempotencyRecord.class));
     }
 
 
     @Test
     void shouldReturnDepositWhenIdempotencyKeyIsReused() {
-
+        // Arrange
         User user = new User(
                 "Test User",
                 "test@gmail.com",
                 "test12345"
         );
-        BigDecimal depositAmount = new BigDecimal("1000.00");
+
+        BigDecimal depositAmount =
+                new BigDecimal("1000.00");
         String accountNumber = "12345678";
         String oldHash = "oldHash";
-        DepositRequestDto requestDto = new DepositRequestDto(
-                accountNumber,
-                depositAmount,
-                "Test Description"
-        );
-
+        DepositRequestDto requestDto =
+                new DepositRequestDto(
+                        accountNumber,
+                        depositAmount,
+                        "Test Description"
+                );
         FinancialTransaction depositTransaction =
                 new FinancialTransaction(
                         TransactionType.DEPOSIT,
                         depositAmount,
                         "Old deposit"
                 );
-
         IdempotencyRecord idempotencyRecord =
                 new IdempotencyRecord(
                         "Idem123",
@@ -308,106 +332,129 @@ public class TransactionServiceTest {
                 accountNumber,
                 depositAmount
         )).thenReturn(oldHash);
-        when(idempotencyRecordRepository.findByIdempotencyKey("Idem123"))
-                .thenReturn(Optional.of(idempotencyRecord));
+        when(idempotencyRecordRepository.findByIdempotencyKey(
+                "Idem123"
+        )).thenReturn(Optional.of(idempotencyRecord));
 
-        TransactionResponseDto responseDto =
+        // Act
+        TransactionResponseDto result =
                 transactionService.deposit(
                         requestDto,
                         authentication,
                         "Idem123"
                 );
 
+        // Assert
         assertEquals(
                 TransactionType.DEPOSIT,
-                responseDto.getTransactionType()
+                result.getTransactionType()
         );
         assertEquals(
                 depositAmount,
-                responseDto.getAmount()
+                result.getAmount()
         );
         assertEquals(
-                TransactionStatus.PENDING,
-                responseDto.getStatus()
+                depositTransaction.getTransactionStatus(),
+                result.getStatus()
         );
         assertEquals(
                 "Old deposit",
-                responseDto.getMessage()
+                result.getMessage()
         );
         verify(transactionRepository, never())
-                .save(any(FinancialTransaction.class));
+                .saveAndFlush(any(FinancialTransaction.class));
 
         verify(ledgerEntryRepository, never())
                 .save(any(LedgerEntry.class));
+        verify(idempotencyRecordRepository, never())
+                .save(any(IdempotencyRecord.class));
+        verify(accountRepository, never())
+                .findByAccountTypeForUpdate(AccountType.SYSTEM);
     }
-
 
     @Test
     void shouldWithdrawSuccessfully() {
 
         // Arrange
         String accountNumber = "12345678";
-        BigDecimal withdrawAmount = new BigDecimal("1000.00");
-        User destinationUser = new User(
+        BigDecimal withdrawalAmount =
+                new BigDecimal("1000.00");
+        User user = new User(
                 "Test User",
                 "test@example.com",
                 "password"
         );
-        Account userAccount = new Account(destinationUser);
-        userAccount.credit(new BigDecimal("10000.00"));
+        Account userAccount =
+                new Account(user);
+        userAccount.credit(
+                new BigDecimal("10000.00")
+        );
+
         Account systemAccount =
-                Account.createSystemAccount(new BigDecimal("100000.00"));
-
+                Account.createSystemAccount(
+                        new BigDecimal("100000.00")
+                );
         when(currentUserResolver.resolve(authentication))
-                .thenReturn(destinationUser);
-
+                .thenReturn(user);
         when(idempotencyRecordService.getHash(
                 accountNumber,
-                withdrawAmount
+                withdrawalAmount
         )).thenReturn("test-request-hash");
-
-        when(idempotencyRecordRepository.findByIdempotencyKey("Test-123"))
-                .thenReturn(Optional.empty());
-
+        when(idempotencyRecordRepository.findByIdempotencyKey(
+                "Test-123"
+        )).thenReturn(Optional.empty());
+        when(accountRepository.findByAccountTypeForUpdate(
+                AccountType.SYSTEM
+        )).thenReturn(Optional.of(systemAccount));
         when(accountRepository.findByAccountNumberAndUserIdForUpdate(
                 eq(accountNumber),
                 nullable(UUID.class)
         )).thenReturn(Optional.of(userAccount));
+        when(transactionRepository.saveAndFlush(
+                any(FinancialTransaction.class)
+        )).thenAnswer(invocation -> invocation.getArgument(0));
+        when(ledgerEntryRepository.save(
+                any(LedgerEntry.class)
+        )).thenAnswer(invocation -> invocation.getArgument(0));
 
-        when(accountRepository.findByAccountTypeForUpdate(AccountType.SYSTEM))
-                .thenReturn(Optional.of(systemAccount));
+        WithdrawalRequestDto requestDto =
+                new WithdrawalRequestDto(
+                        accountNumber,
+                        withdrawalAmount,
+                        "Test description"
+                );
 
-        when(transactionRepository.save(any(FinancialTransaction.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        when(ledgerEntryRepository.save(any(LedgerEntry.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        WithdrawalRequestDto requestDto = new WithdrawalRequestDto(
-                accountNumber,
-                withdrawAmount,
-                "Test description"
-        );
-
-        transactionService.withdraw(
-                requestDto,
-                authentication,
-                "Test-123"
-        );
+        // Act
+        TransactionResponseDto result =
+                transactionService.withdraw(
+                        requestDto,
+                        authentication,
+                        "Test-123"
+                );
 
         // Assert
         assertEquals(
                 new BigDecimal("9000.00"),
                 userAccount.getBalance()
         );
-
         assertEquals(
                 new BigDecimal("101000.00"),
                 systemAccount.getBalance()
         );
-
+        assertEquals(
+                TransactionType.WITHDRAWAL,
+                result.getTransactionType()
+        );
+        assertEquals(
+                withdrawalAmount,
+                result.getAmount()
+        );
+        assertEquals(
+                TransactionStatus.COMPLETED,
+                result.getStatus()
+        );
         verify(transactionRepository)
-                .save(any(FinancialTransaction.class));
+                .saveAndFlush(any(FinancialTransaction.class));
         verify(ledgerEntryRepository, times(2))
                 .save(any(LedgerEntry.class));
         verify(idempotencyRecordRepository)
@@ -418,46 +465,45 @@ public class TransactionServiceTest {
     @Test
     void withdrawalRejectedForInsufficientBalance() {
 
-        User sourceUser = new User(
+        // Arrange
+        User user = new User(
                 "Withdrawal test",
                 "withdraw@example.com",
                 "pass123"
         );
-        Account userAccount = new Account(sourceUser);
+        Account userAccount =
+                new Account(user);
         String accountNumber = "87654321";
-        BigDecimal withdrawalAmount = new BigDecimal("25000");
+        BigDecimal withdrawalAmount =
+                new BigDecimal("25000.00");
         Account systemAccount =
-                Account.createSystemAccount(new BigDecimal("100000.00"));
+                Account.createSystemAccount(
+                        new BigDecimal("100000.00")
+                );
 
         when(currentUserResolver.resolve(authentication))
-                .thenReturn(sourceUser);
+                .thenReturn(user);
         when(idempotencyRecordService.getHash(
                 accountNumber,
                 withdrawalAmount
         )).thenReturn("new-hash");
-
-        when(idempotencyRecordRepository.findByIdempotencyKey("Test-123"))
-                .thenReturn(Optional.empty());
-
-        when(accountRepository.findByAccountTypeForUpdate(AccountType.SYSTEM))
-                .thenReturn(Optional.of(systemAccount));
-
+        when(idempotencyRecordRepository.findByIdempotencyKey(
+                "Test-123"
+        )).thenReturn(Optional.empty());
+        when(accountRepository.findByAccountTypeForUpdate(
+                AccountType.SYSTEM
+        )).thenReturn(Optional.of(systemAccount));
         when(accountRepository.findByAccountNumberAndUserIdForUpdate(
                 eq(accountNumber),
                 nullable(UUID.class)
         )).thenReturn(Optional.of(userAccount));
 
-        when(transactionRepository.save(any(FinancialTransaction.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        when(ledgerEntryRepository.save(any(LedgerEntry.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        WithdrawalRequestDto requestDto = new WithdrawalRequestDto(
-                accountNumber,
-                withdrawalAmount,
-                "Test description"
-        );
+        WithdrawalRequestDto requestDto =
+                new WithdrawalRequestDto(
+                        accountNumber,
+                        withdrawalAmount,
+                        "Test description"
+                );
 
         // Act & Assert
         assertThrows(
@@ -468,67 +514,93 @@ public class TransactionServiceTest {
                         "Test-123"
                 )
         );
+
+        verify(transactionRepository)
+                .saveAndFlush(any(FinancialTransaction.class));
+        verify(ledgerEntryRepository, times(2))
+                .save(any(LedgerEntry.class));
+        verify(idempotencyRecordRepository)
+                .save(any(IdempotencyRecord.class));
+        assertEquals(
+                BigDecimal.ZERO,
+                userAccount.getBalance()
+        );
+        assertEquals(
+                new BigDecimal("100000.00"),
+                systemAccount.getBalance()
+        );
     }
 
     @Test
     void shouldTransferSuccessfully() {
+        // Arrange
         String fromAccountNumber = "12345678";
         String toAccountNumber = "87654321";
+        BigDecimal transferAmount =
+                new BigDecimal("1000.00");
         User sourceUser = new User(
                 "Source User",
                 "source@example.com",
                 "pass123"
         );
         User destinationUser = new User(
-                "destination User",
+                "Destination User",
                 "destination@example.com",
                 "pass123"
         );
-        Account sourceAccount = new Account(sourceUser);
-        Account destinationAccount = new Account(destinationUser);
-        sourceAccount.credit(new BigDecimal("5000.00"));
-        destinationAccount.credit(new BigDecimal("5000.00"));
-        BigDecimal transferAmount = new BigDecimal("1000.00");
+
+        Account sourceAccount =
+                new Account(sourceUser);
+
+        Account destinationAccount =
+                new Account(destinationUser);
+
+        sourceAccount.credit(
+                new BigDecimal("5000.00")
+        );
+        destinationAccount.credit(
+                new BigDecimal("5000.00")
+        );
 
         when(currentUserResolver.resolve(authentication))
                 .thenReturn(sourceUser);
-
         when(idempotencyRecordService.getHash(
                 fromAccountNumber,
                 toAccountNumber,
                 transferAmount
         )).thenReturn("new-hash");
-
-        when(idempotencyRecordRepository.findByIdempotencyKey("Test-123"))
-                .thenReturn(Optional.empty());
-
+        when(idempotencyRecordRepository.findByIdempotencyKey(
+                "Test-123"
+        )).thenReturn(Optional.empty());
         when(accountRepository.findByAccountNumberAndUserIdForUpdate(
                 eq(fromAccountNumber),
                 nullable(UUID.class)
         )).thenReturn(Optional.of(sourceAccount));
-
         when(accountRepository.findByAccountNumberForUpdate(
                 eq(toAccountNumber)
         )).thenReturn(Optional.of(destinationAccount));
+        when(transactionRepository.saveAndFlush(
+                any(FinancialTransaction.class)
+        )).thenAnswer(invocation -> invocation.getArgument(0));
+        when(ledgerEntryRepository.save(
+                any(LedgerEntry.class)
+        )).thenAnswer(invocation -> invocation.getArgument(0));
 
-        when(transactionRepository.save(any(FinancialTransaction.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        TransferRequestDto requestDto =
+                new TransferRequestDto(
+                        fromAccountNumber,
+                        toAccountNumber,
+                        transferAmount,
+                        "Transfer Test"
+                );
 
-        when(ledgerEntryRepository.save(any(LedgerEntry.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        TransferRequestDto requestDto = new TransferRequestDto(
-                fromAccountNumber,
-                toAccountNumber,
-                transferAmount,
-                "Transfer Test"
-        );
-
-        transactionService.transfer(
-                requestDto,
-                authentication,
-                "Test-123"
-        );
+        // Act
+        TransferResponseDto result =
+                transactionService.transfer(
+                        requestDto,
+                        authentication,
+                        "Test-123"
+                );
 
         // Assert
         assertEquals(
@@ -539,8 +611,20 @@ public class TransactionServiceTest {
                 new BigDecimal("6000.00"),
                 destinationAccount.getBalance()
         );
+        assertEquals(
+                TransactionType.TRANSFER,
+                result.getTransactionType()
+        );
+        assertEquals(
+                transferAmount,
+                result.getAmount()
+        );
+        assertEquals(
+                TransactionStatus.COMPLETED,
+                result.getStatus()
+        );
         verify(transactionRepository)
-                .save(any(FinancialTransaction.class));
+                .saveAndFlush(any(FinancialTransaction.class));
         verify(ledgerEntryRepository, times(2))
                 .save(any(LedgerEntry.class));
         verify(idempotencyRecordRepository)
@@ -550,92 +634,103 @@ public class TransactionServiceTest {
 
     @Test
     void rejectSameAccountTransfer() {
-        String fromAccountNumber = "12345678";
-        String toAccountNumber = "12345678";
-        BigDecimal transferAmount = new BigDecimal("1000.00");
-        User sourceUser = new User(
-                "test user",
+
+        // Arrange
+        String accountNumber = "12345678";
+        BigDecimal transferAmount =
+                new BigDecimal("1000.00");
+        User user = new User(
+                "Test User",
                 "test@gmail.com",
                 "pass123"
         );
+
         when(currentUserResolver.resolve(authentication))
-                .thenReturn(sourceUser);
+                .thenReturn(user);
 
-        TransferRequestDto transferRequestDto = new TransferRequestDto(
-                fromAccountNumber,
-                toAccountNumber,
-                transferAmount,
-                "transfer test 3"
-        );
+        TransferRequestDto requestDto =
+                new TransferRequestDto(
+                        accountNumber,
+                        accountNumber,
+                        transferAmount,
+                        "Transfer test"
+                );
 
+        // Act & Assert
         assertThrows(
                 InvalidTransactionRequestException.class,
                 () -> transactionService.transfer(
-                        transferRequestDto,
+                        requestDto,
                         authentication,
                         "Test-123"
                 )
         );
+
+        verifyNoInteractions(accountRepository);
+        verifyNoInteractions(idempotencyRecordService);
+        verifyNoInteractions(idempotencyRecordRepository);
+        verifyNoInteractions(transactionRepository);
+        verifyNoInteractions(ledgerEntryRepository);
     }
 
 
     @Test
     void transferWithInsufficientBalanceRejected() {
+
         // Arrange
         String fromAccountNumber = "12345678";
         String toAccountNumber = "87654321";
-
+        BigDecimal transferAmount =
+                new BigDecimal("60000.00");
         User sourceUser = new User(
                 "Source User",
                 "source@example.com",
                 "pass123"
         );
         User destinationUser = new User(
-                "destination User",
+                "Destination User",
                 "destination@example.com",
                 "pass123"
         );
 
-        Account sourceAccount = new Account(sourceUser);
-        Account destinationAccount = new Account(destinationUser);
+        Account sourceAccount =
+                new Account(sourceUser);
 
-        sourceAccount.credit(new BigDecimal("5000.00"));
-        destinationAccount.credit(new BigDecimal("5000.00"));
-        BigDecimal transferAmount = new BigDecimal("60000.00");
+        Account destinationAccount =
+                new Account(destinationUser);
+
+        sourceAccount.credit(
+                new BigDecimal("5000.00")
+        );
+
+        destinationAccount.credit(
+                new BigDecimal("5000.00")
+        );
 
         when(currentUserResolver.resolve(authentication))
                 .thenReturn(sourceUser);
-
         when(idempotencyRecordService.getHash(
                 fromAccountNumber,
                 toAccountNumber,
                 transferAmount
         )).thenReturn("new-hash");
-
-        when(idempotencyRecordRepository.findByIdempotencyKey("Test-123"))
-                .thenReturn(Optional.empty());
-
+        when(idempotencyRecordRepository.findByIdempotencyKey(
+                "Test-123"
+        )).thenReturn(Optional.empty());
         when(accountRepository.findByAccountNumberAndUserIdForUpdate(
                 eq(fromAccountNumber),
                 nullable(UUID.class)
         )).thenReturn(Optional.of(sourceAccount));
-
         when(accountRepository.findByAccountNumberForUpdate(
                 eq(toAccountNumber)
         )).thenReturn(Optional.of(destinationAccount));
-
-        when(transactionRepository.save(any(FinancialTransaction.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        when(ledgerEntryRepository.save(any(LedgerEntry.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        TransferRequestDto requestDto = new TransferRequestDto(
-                fromAccountNumber,
-                toAccountNumber,
-                transferAmount,
-                "Transfer Test"
-        );
+        TransferRequestDto requestDto =
+                new TransferRequestDto(
+                        fromAccountNumber,
+                        toAccountNumber,
+                        transferAmount,
+                        "Transfer Test"
+                );
 
         // Act & Assert
         assertThrows(
@@ -645,6 +740,20 @@ public class TransactionServiceTest {
                         authentication,
                         "Test-123"
                 )
+        );
+        verify(transactionRepository)
+                .saveAndFlush(any(FinancialTransaction.class));
+        verify(ledgerEntryRepository, times(2))
+                .save(any(LedgerEntry.class));
+        verify(idempotencyRecordRepository)
+                .save(any(IdempotencyRecord.class));
+        assertEquals(
+                new BigDecimal("5000.00"),
+                sourceAccount.getBalance()
+        );
+        assertEquals(
+                new BigDecimal("5000.00"),
+                destinationAccount.getBalance()
         );
     }
 }
