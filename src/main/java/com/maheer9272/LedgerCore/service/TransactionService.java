@@ -18,6 +18,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 
@@ -77,7 +78,7 @@ public class TransactionService {
         }
 
         Account systemAccount = accountRepository
-                .findByAccountTypeForUpdate(AccountType.SYSTEM)
+                .findByAccountType(AccountType.SYSTEM)
                 .orElseThrow(() ->
                         new SystemAccountNotFoundException(
                                 "SYSTEM account not found"
@@ -131,7 +132,11 @@ public class TransactionService {
         idempotencyRecordRepository.save(idempotencyRecord);
 
         // Transferring the actual money
-        systemAccount.debit(depositAmount);
+        int systemRowsUpdated = accountRepository.debitByAccountType(AccountType.SYSTEM, depositAmount, Instant.now());
+        if (systemRowsUpdated == 0) {
+            throw new InsufficientBalanceException("SYSTEM account has insufficient balance");
+        }
+
         userAccount.credit(depositAmount);
         depositTransaction.complete();
 
@@ -182,7 +187,7 @@ public class TransactionService {
 
         Account systemAccount =
                 accountRepository
-                        .findByAccountTypeForUpdate(AccountType.SYSTEM)
+                        .findByAccountType(AccountType.SYSTEM)
                         .orElseThrow(() ->
                                 new SystemAccountNotFoundException(
                                         "SYSTEM account not found"
@@ -238,7 +243,7 @@ public class TransactionService {
 
         // Transferring the actual money
         userAccount.debit(withdrawalAmount);
-        systemAccount.credit(withdrawalAmount);
+        accountRepository.creditByAccountType(AccountType.SYSTEM, withdrawalAmount, Instant.now());
         withdrawalTransaction.complete();
 
         return new TransactionResponseDto(
@@ -255,8 +260,10 @@ public class TransactionService {
                                         Authentication authentication,
                                         String idempotencyKey) {
 
-        if (requestDto.getAmount().signum() <= 0) {
-            throw new InvalidAmountException("Amount must be positive");
+        if (requestDto.getAmount() == null || requestDto.getAmount().signum() <= 0) {
+            throw new InvalidAmountException(
+                    "Amount must be positive"
+            );
         }
         User sourceUser = currentUserResolver.resolve(authentication);
         if (sourceUser.getUserStatus() != UserStatus.ACTIVE) {
@@ -265,21 +272,24 @@ public class TransactionService {
             );
         }
 
-        if (requestDto.getFromAccountNumber().equals(requestDto.getToAccountNumber())) {
+        if (requestDto.getFromAccountNumber()
+                .equals(requestDto.getToAccountNumber())) {
+
             throw new InvalidTransactionRequestException(
                     "Cannot transfer to the same account"
             );
         }
         BigDecimal transferAmount = requestDto.getAmount();
 
-        String requestHash = idempotencyRecordService.
-                getHash(requestDto.getFromAccountNumber(),
-                        requestDto.getToAccountNumber(),
-                        transferAmount
-                );
+        String requestHash = idempotencyRecordService.getHash(
+                requestDto.getFromAccountNumber(),
+                requestDto.getToAccountNumber(),
+                transferAmount
+        );
 
         Optional<IdempotencyRecord> record =
-                idempotencyRecordRepository.findByIdempotencyKey(idempotencyKey);
+                idempotencyRecordRepository
+                        .findByIdempotencyKey(idempotencyKey);
 
         if (record.isPresent()) {
             if (!record.get().getRequestHash().equals(requestHash)) {
@@ -287,23 +297,23 @@ public class TransactionService {
                         "Idempotency key has already been used with a different request"
                 );
             }
+            FinancialTransaction transaction =
+                    record.get().getFinancialTransaction();
+
             return new TransferResponseDto(
-                    record.get().getFinancialTransaction().getReferenceId(),
-                    record.get().getFinancialTransaction().getTransactionType(),
-                    record.get().getFinancialTransaction().getAmount(),
-                    record.get().getFinancialTransaction().getTransactionStatus(),
-                    record.get().getFinancialTransaction().getDescription()
+                    transaction.getReferenceId(),
+                    transaction.getTransactionType(),
+                    transaction.getAmount(),
+                    transaction.getTransactionStatus(),
+                    transaction.getDescription()
             );
         }
 
         Account sourceAccount;
         Account destinationAccount;
 
-        /*
-         Now checking the comparing the account number
-         Lock the account first whichever account number is smaller
-         */
-        if (requestDto.getFromAccountNumber().compareTo(requestDto.getToAccountNumber()) < 0) {
+        if (requestDto.getFromAccountNumber()
+                .compareTo(requestDto.getToAccountNumber()) < 0) {
 
             sourceAccount = accountRepository
                     .findByAccountNumberAndUserIdForUpdate(
@@ -317,7 +327,9 @@ public class TransactionService {
                     );
 
             destinationAccount = accountRepository
-                    .findByAccountNumberForUpdate(requestDto.getToAccountNumber())
+                    .findByAccountNumberForUpdate(
+                            requestDto.getToAccountNumber()
+                    )
                     .orElseThrow(() ->
                             new ResourceDeniedException(
                                     "This account does not exist"
@@ -326,7 +338,9 @@ public class TransactionService {
         } else {
 
             destinationAccount = accountRepository
-                    .findByAccountNumberForUpdate(requestDto.getToAccountNumber())
+                    .findByAccountNumberForUpdate(
+                            requestDto.getToAccountNumber()
+                    )
                     .orElseThrow(() ->
                             new ResourceDeniedException(
                                     "This account does not exist"
@@ -350,19 +364,25 @@ public class TransactionService {
         }
         if (sourceAccount.getAccountStatus() != AccountStatus.ACTIVE) {
             throw new AccountNotActiveException(
-                    "Account is not active"
+                    "Source account is not active"
             );
         }
 
         if (destinationAccount.getAccountType() != AccountType.CUSTOMER) {
             throw new InvalidTransactionRequestException(
-                    "Transfers can only be made from customer accounts"
+                    "Transfers can only be made to customer accounts"
             );
         }
 
         if (destinationAccount.getAccountStatus() != AccountStatus.ACTIVE) {
             throw new AccountNotActiveException(
-                    "Account is not active"
+                    "Destination account is not active"
+            );
+        }
+
+        if (sourceAccount.getBalance().compareTo(transferAmount) < 0) {
+            throw new InsufficientBalanceException(
+                    "Insufficient balance"
             );
         }
 
@@ -392,24 +412,28 @@ public class TransactionService {
         ledgerEntryRepository.save(debitLedgerEntry);
         ledgerEntryRepository.save(creditLedgerEntry);
 
-        IdempotencyRecord idempotencyRecord = new IdempotencyRecord(
-                idempotencyKey,
-                transferTransaction,
-                requestHash
-        );
-        idempotencyRecordRepository.save(idempotencyRecord);
-
         sourceAccount.debit(transferAmount);
         destinationAccount.credit(transferAmount);
 
         transferTransaction.complete();
 
+        IdempotencyRecord idempotencyRecord =
+                new IdempotencyRecord(
+                        idempotencyKey,
+                        transferTransaction,
+                        requestHash
+                );
+
+        idempotencyRecordRepository.save(idempotencyRecord);
+
         return new TransferResponseDto(
                 transferTransaction.getReferenceId(),
                 transferTransaction.getTransactionType(),
-                transferAmount,
+                transferTransaction.getAmount(),
                 transferTransaction.getTransactionStatus(),
-                "Transferred the amount of " + transferAmount + " successfully"
+                "Transferred the amount of "
+                        + transferAmount
+                        + " successfully"
         );
     }
 

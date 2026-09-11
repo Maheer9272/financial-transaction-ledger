@@ -5,9 +5,12 @@ import com.maheer9272.LedgerCore.entity.AccountType;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -56,4 +59,29 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
     Optional<Account> findByAccountNumberForUpdate(@Param("accountNumber") String accountNumber);
 
     Optional<Account> findByAccountNumber(String accountNumber);
+
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE Account a
+            SET a.balance = a.balance - :amount,
+                a.version = a.version + 1,
+                a.updatedAt = :now
+            WHERE a.accountType = :accountType
+            AND a.balance >= :amount
+            """)
+    int debitByAccountType(@Param("accountType") AccountType accountType,
+                           @Param("amount") BigDecimal amount,
+                           @Param("now") Instant now);
+
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE Account a
+            SET a.balance = a.balance + :amount,
+                a.version = a.version + 1,
+                a.updatedAt = :now
+            WHERE a.accountType = :accountType
+            """)
+    int creditByAccountType(@Param("accountType") AccountType accountType,
+                            @Param("amount") BigDecimal amount,
+                            @Param("now") Instant now);
 }
