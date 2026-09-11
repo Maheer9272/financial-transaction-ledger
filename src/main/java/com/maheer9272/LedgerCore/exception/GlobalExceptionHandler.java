@@ -394,13 +394,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(InvalidTransactionRequestException.class)
     public ResponseEntity<ExceptionResponseDto> handleCantTransferToThisAccountException(
+            InvalidTransactionRequestException ex,
             HttpServletRequest request) {
 
         ExceptionResponseDto exceptionResponse = new ExceptionResponseDto(
                 LocalDateTime.now(),
                 HttpStatus.BAD_REQUEST.value(),
                 HttpStatus.BAD_REQUEST.getReasonPhrase(),
-                "Check account number again",
+                ex.getMessage(),
                 request.getRequestURI()
         );
 
@@ -411,13 +412,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(InvalidAmountException.class)
     public ResponseEntity<ExceptionResponseDto> handleInvalidAmountException(
+            InvalidAmountException ex,
             HttpServletRequest request) {
 
         ExceptionResponseDto exceptionResponse = new ExceptionResponseDto(
                 LocalDateTime.now(),
                 HttpStatus.BAD_REQUEST.value(),
                 HttpStatus.BAD_REQUEST.getReasonPhrase(),
-                "Amount Must be positive",
+                ex.getMessage(),
                 request.getRequestURI()
         );
 
